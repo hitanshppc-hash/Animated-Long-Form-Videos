@@ -13,7 +13,7 @@ def main():
         if os.path.exists(meta_path):
             with open(meta_path) as f:
                 meta = json.load(f)
-            title = meta.get("title", "Untitled Video")
+            title = meta.get("title") or "Untitled Video"
         else:
             title = "Untitled Video"
 
