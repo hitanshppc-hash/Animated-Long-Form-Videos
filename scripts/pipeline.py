@@ -8,10 +8,10 @@ from pathlib import Path
 
 from generate_clip import generate_clip
 from generate_storyboard import generate_storyboard
-from generate_dialogue_audio import generate_dialogue_track, write_srt
+from generate_dialogue_audio import generate_dialogue_track, write_srt, write_ass
 from extract_last_frame import extract_last_frame
 from fetch_seed_image import fetch_seed_image
-from merge_clips import merge_clips, attach_narration
+from merge_clips import merge_clips, attach_narration, burn_subtitles
 from history import load_titles, append_title
 from utils import get_logger, video_duration
 
@@ -153,7 +153,11 @@ def run_pipeline(
         cues = generate_dialogue_track(scenes, work_dir, str(work / "narration.mp3"))
         if cues:
             attach_narration(merged_path, str(work / "narration.mp3"), output_path)
-            write_srt(cues, str(Path(output_path).with_suffix(".srt")))
+            srt_path = str(Path(output_path).with_suffix(".srt"))
+            write_srt(cues, srt_path)
+            ass_path = str(Path(output_path).with_suffix(".ass"))
+            write_ass(cues, ass_path)
+            burn_subtitles(output_path, ass_path, output_path)
         else:
             logger.warning("No dialogue lines found in storyboard, skipping narration")
             shutil.copy(merged_path, output_path)

@@ -93,3 +93,44 @@ def write_srt(cues: list, srt_path: str) -> None:
     Path(srt_path).parent.mkdir(parents=True, exist_ok=True)
     Path(srt_path).write_text("\n".join(lines))
     logger.info(f"Wrote captions ({len(cues)} cues) to {srt_path}")
+
+
+_ASS_COLORS = [
+    "&H00FF6600&", "&H000066FF&", "&H0000FF66&",
+    "&H0066FFFF&", "&H00FF00FF&", "&H00FF3366&",
+]
+
+
+def write_ass(cues: list, ass_path: str) -> str:
+    def fmt(seconds: float) -> str:
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = seconds % 60
+        return f"{h:01d}:{m:02d}:{s:05.2f}"
+
+    lines = [
+        "[Script Info]",
+        "Title: Long-Form Video Captions",
+        "ScriptType: v4.00+",
+        "WrapStyle: 0",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        'Style: W,DejaVu Sans,58,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,20,20,50,1',
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+
+    for i, cue in enumerate(cues):
+        color = _ASS_COLORS[i % len(_ASS_COLORS)]
+        text = f"{cue['character']}: {cue['text']}"
+        lines.append(
+            f"Dialogue: 0,{fmt(cue['start'])},{fmt(cue['end'])},W,,0,0,0,,"
+            f"{{\\c{color}}}{text}"
+        )
+
+    Path(ass_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(ass_path).write_text("\n".join(lines))
+    logger.info(f"Wrote captions ({len(cues)} cues) to {ass_path}")
+    return ass_path

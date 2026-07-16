@@ -18,8 +18,6 @@ def main():
             title = "Untitled Video"
 
     desc = os.environ.get("YT_VIDEO_DESC", "").strip()
-    if not desc:
-        desc = "Generated with the Animated Long-Form Video Pipeline"
 
     tags_input = os.environ.get("YT_VIDEO_TAGS", "").strip()
     tags = [t.strip() for t in tags_input.split(",") if t.strip()] if tags_input else ["animation", "long-form", "ai-generated"]

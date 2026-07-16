@@ -212,8 +212,9 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
         _run_ff(
             ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
              "-map", "0:v", "-map", "1:a",
+             "-af", f"apad=whole_dur={duration}",
              "-ss", "0", "-t", str(duration),
-             "-c:v", "copy", "-c:a", "aac", output_path],
+             "-c:v", "copy", "-c:a", "aac", "-shortest", output_path],
             "attach_narration",
         )
         logger.info(f"Wrote narrated video: {output_path}")
@@ -237,6 +238,34 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
         logger.info(f"Wrote narrated video (moviepy fallback): {output_path}")
     except Exception as e2:
         raise RuntimeError(f"All narration attach methods failed: {e2}")
+
+
+def burn_subtitles(video_path: str, subtitle_path: str, output_path: str) -> None:
+    if not Path(video_path).exists():
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    if not Path(subtitle_path).exists():
+        raise FileNotFoundError(f"Subtitle file not found: {subtitle_path}")
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    tmp = str(Path(output_path).with_suffix(".tmp.burned.mp4"))
+
+    escaped = str(Path(subtitle_path).resolve()).replace(":", "\\:").replace("'", "\\'")
+    try:
+        _run_ff(
+            ["ffmpeg", "-y", "-i", video_path,
+             "-vf", f"subtitles='{escaped}'",
+             "-c:a", "copy", "-c:v", "libx264", "-crf", "22", "-preset", "fast",
+             tmp],
+            "burn_subtitles",
+        )
+        os.replace(tmp, output_path)
+        logger.info(f"Wrote captioned video: {output_path}")
+    except Exception as e:
+        if Path(tmp).exists():
+            os.remove(tmp)
+        logger.warning(f"Subtitle burn-in failed ({e}), using original video")
+        if video_path != output_path:
+            shutil.copy2(video_path, output_path)
 
 
 def main() -> None:

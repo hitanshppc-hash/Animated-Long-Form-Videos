@@ -6,14 +6,11 @@ import subprocess
 import asyncio
 from pathlib import Path
 
-import requests
-
-from utils import get_logger, retry
+from utils import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # George - Warm, Captivating Storyteller
-TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+DEFAULT_VOICE_ID = "af_heart"
 
 TONE_VOICE_MAP = {
     "expository": "en-US-AriaNeural",
@@ -81,32 +78,6 @@ def _probe(path):
             h, m, s = dur.split(":")
             return float(h) * 3600 + float(m) * 60 + float(s)
     raise RuntimeError(f"Could not probe duration for {path}")
-
-
-# ---------------------------------------------------------------- ElevenLabs
-@retry(attempts=3, base_delay=5.0)
-def _call_elevenlabs(text: str, voice_id: str, api_key: str) -> bytes:
-    response = requests.post(
-        TTS_URL.format(voice_id=voice_id),
-        headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-        json={
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        },
-        timeout=120,
-    )
-    if response.status_code != 200:
-        raise RuntimeError(f"ElevenLabs HTTP {response.status_code}: {response.text[:200]}")
-    return response.content
-
-
-def _elevenlabs(text, voice_id, output_path):
-    audio_bytes = _call_elevenlabs(text, voice_id, os.environ["ELEVENLABS_API_KEY"])
-    with open(output_path, "wb") as f:
-        f.write(audio_bytes)
-    logger.info(f"Wrote narration audio (ElevenLabs): {output_path} ({len(audio_bytes) / 1024:.0f} KB)")
-    return output_path, _estimate_timings(text, _probe(output_path))
 
 
 # ------------------------------------------------------------------- Kokoro
@@ -195,17 +166,11 @@ def _gtts(text, voice, output_path):
 def generate_narration(text: str, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str:
     """Generate narration audio. Returns path to audio file.
 
-    Fallback chain: ElevenLabs → Kokoro → edge-tts → gTTS → espeak-ng.
+    Fallback chain: Kokoro → edge-tts → gTTS → espeak-ng.
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    chain = []
-
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if api_key:
-        chain.append(("elevenlabs", lambda: _elevenlabs(text, voice_id, output_path)))
-
-    chain += [
+    chain = [
         ("kokoro", lambda: _kokoro(text, voice_id, output_path)),
         ("edge-tts", lambda: _edge_tts(text, voice_id, output_path)),
         ("gtts", lambda: _gtts(text, voice_id, output_path)),
@@ -225,7 +190,7 @@ def generate_narration(text: str, output_path: str, voice_id: str = DEFAULT_VOIC
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate narration audio from text (ElevenLabs → Kokoro → edge-tts → gTTS → espeak-ng)")
+    parser = argparse.ArgumentParser(description="Generate narration audio from text (Kokoro → edge-tts → gTTS → espeak-ng)")
     parser.add_argument("--text", required=True, help="Narration text to speak")
     parser.add_argument("--output", required=True, help="Path to write the output audio file")
     parser.add_argument("--voice-id", default=DEFAULT_VOICE_ID, help="ElevenLabs voice id")
