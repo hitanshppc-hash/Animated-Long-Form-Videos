@@ -1,6 +1,8 @@
 name: Generate Long-Form Video
 
 on:
+  schedule:
+    - cron: "30 */3 * * *"
   workflow_dispatch:
     inputs:
       storyboard_path:
@@ -77,33 +79,10 @@ jobs:
           YT_PRIVACY: ${{ inputs.privacy }}
         run: |
           if [ -z "$YT_REFRESH_TOKEN" ]; then
-            echo "YouTube secrets not configured — skipping upload"
+            echo "YouTube secrets not configured - skipping upload"
             exit 0
           fi
-          python -c "
-import json, os, sys
-sys.path.insert(0, 'scripts')
-from youtube_upload import upload
-
-title = os.environ.get('YT_VIDEO_TITLE', '').strip()
-if not title:
-    title = json.load(open('storyboard.example.json')).get('title', 'Untitled Video')
-
-desc = os.environ.get('YT_VIDEO_DESC', '').strip()
-if not desc:
-    desc = 'Generated with the Animated Long-Form Video Pipeline'
-
-privacy = os.environ.get('YT_PRIVACY', 'unlisted').strip().lower()
-
-url = upload(
-    'output/final_video.mp4',
-    title=title,
-    description=desc,
-    tags=['animation', 'long-form', 'ai-generated'],
-    privacy=privacy,
-)
-print(f'Uploaded: {url}')
-"
+          python scripts/upload_to_youtube.py
 
       - name: Upload work directory (debug on failure)
         if: failure()
