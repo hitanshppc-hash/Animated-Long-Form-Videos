@@ -1,0 +1,75 @@
+name: Generate Long-Form Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      storyboard_path:
+        description: "Path to the storyboard JSON file"
+        required: false
+        default: "storyboard.example.json"
+      init_image_path:
+        description: "Path to the initial seed image (committed in the repo, e.g. assets/seed.png)"
+        required: true
+      model:
+        description: "Hugging Face model id for image-to-video"
+        required: false
+        default: "Wan-AI/Wan2.2-I2V-A14B"
+      crossfade:
+        description: "Crossfade duration in seconds between clips (0 = hard cuts)"
+        required: false
+        default: "0"
+
+concurrency:
+  group: generate-video
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify HF_TOKEN secret is set
+        run: |
+          if [ -z "${{ secrets.HF_TOKEN }}" ]; then
+            echo "::error::HF_TOKEN repository secret is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Run pipeline
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python scripts/pipeline.py \
+            --storyboard "${{ inputs.storyboard_path }}" \
+            --init-image "${{ inputs.init_image_path }}" \
+            --model "${{ inputs.model }}" \
+            --crossfade "${{ inputs.crossfade }}" \
+            --output output/final_video.mp4
+
+      - name: Upload final video
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-video
+          path: output/final_video.mp4
+          retention-days: 14
+
+      - name: Upload work directory (debug on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-debug
+          path: work/
+          retention-days: 7

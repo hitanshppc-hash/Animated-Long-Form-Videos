@@ -1,0 +1,44 @@
+name: Repo Size Check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check-size:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check total repo size
+        run: |
+          MAX_GB=5
+          SIZE_KB=$(du -sk .git | cut -f1)
+          SIZE_GB=$(awk "BEGIN { printf \"%.2f\", $SIZE_KB/1024/1024 }")
+          echo "Repo (.git) size: ${SIZE_GB} GB (limit: ${MAX_GB} GB)"
+          echo "## Repo size: ${SIZE_GB} GB / ${MAX_GB} GB limit" >> "$GITHUB_STEP_SUMMARY"
+          if awk "BEGIN { exit !($SIZE_GB > $MAX_GB) }"; then
+            echo "::error::Repo size ${SIZE_GB}GB exceeds the ${MAX_GB}GB limit. Generated videos/work files must never be committed (see .gitignore)."
+            exit 1
+          fi
+
+      - name: Flag any tracked file over 50MB
+        run: |
+          MAX_MB=50
+          FOUND=0
+          while IFS=$'\t' read -r meta path; do
+            size=$(echo "$meta" | awk '{print $4}')
+            if [ -n "$size" ] && [ "$size" -gt $((MAX_MB*1024*1024)) ]; then
+              mb=$(awk "BEGIN{printf \"%.1f\", $size/1024/1024}")
+              echo "::error::Tracked file over ${MAX_MB}MB: '$path' (${mb} MB) — this is almost always a generated video/media file that should be gitignored instead."
+              FOUND=1
+            fi
+          done < <(git ls-tree -r -l HEAD)
+          if [ "$FOUND" -eq 1 ]; then
+            exit 1
+          fi
+          echo "No tracked files over ${MAX_MB}MB."

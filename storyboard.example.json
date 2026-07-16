@@ -1,0 +1,20 @@
+{
+  "title": "Example Story",
+  "scenes": [
+    {
+      "prompt": "Slow cinematic pan across the scene, warm golden light, gentle wind movement, animation style"
+    },
+    {
+      "prompt": "Character walks forward with a determined expression, dynamic camera movement, animation style",
+      "negative_prompt": "blurry, low quality, distorted, extra limbs"
+    },
+    {
+      "prompt": "Camera pulls back to reveal a wide sunlit landscape, birds flying past, peaceful atmosphere, animation style",
+      "num_frames": 81
+    },
+    {
+      "prompt": "Close-up shot at dusk, warm flickering light, calm and reflective mood, animation style",
+      "seed": 42
+    }
+  ]
+}
