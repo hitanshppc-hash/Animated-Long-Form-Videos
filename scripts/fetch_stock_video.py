@@ -19,7 +19,7 @@ def _pick_file(video: dict, target_width: int = 1280) -> dict:
     return min(mp4_files, key=lambda f: abs(f["width"] - target_width))
 
 
-def fetch_stock_video(query: str, output_path: str, max_duration: float = 6.0) -> None:
+def fetch_stock_video(query: str, output_path: str, max_duration: float = 12.0) -> None:
     api_key = os.environ.get("PEXELS_API_KEY")
     if not api_key:
         raise RuntimeError("PEXELS_API_KEY environment variable is not set")
@@ -58,7 +58,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch a real stock video clip from Pexels as a video-generation fallback")
     parser.add_argument("--query", required=True, help="Search query describing the desired clip")
     parser.add_argument("--output", required=True, help="Path to write the output .mp4")
-    parser.add_argument("--max-duration", type=float, default=6.0, help="Trim the clip to at most this many seconds")
+    parser.add_argument("--max-duration", type=float, default=12.0, help="Trim the clip to at most this many seconds")
     args = parser.parse_args()
 
     fetch_stock_video(args.query, args.output, args.max_duration)

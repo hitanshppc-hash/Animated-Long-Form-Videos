@@ -39,12 +39,13 @@ def run_pipeline(
     work_dir: str,
     output_path: str,
     idea: str = "",
-    num_scenes: int = 6,
+    num_scenes: int = 40,
     crossfade: float = 0.0,
     narrate: bool = False,
     dry_run: bool = False,
     resume: bool = True,
     history_path: str = "history.json",
+    clip_duration: float = 12.0,
 ) -> None:
     start_time = time.monotonic()
     work = Path(work_dir)
@@ -106,6 +107,7 @@ def run_pipeline(
             guidance_scale=scene.get("guidance_scale"),
             seed=scene.get("seed"),
             dry_run=dry_run,
+            clip_duration=clip_duration,
         )
         clip_paths.append(str(clip_path))
 
@@ -172,13 +174,14 @@ def run_pipeline(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the full idea -> long-form animated video pipeline")
     parser.add_argument("--idea", default="", help="Story idea/premise/theme; leave blank to let the LLM invent one")
-    parser.add_argument("--scenes", type=int, default=6, help="Number of scenes to generate if no storyboard exists yet")
+    parser.add_argument("--scenes", type=int, default=40, help="Number of scenes to generate if no storyboard exists yet")
     parser.add_argument("--storyboard", default="storyboard.json", help="Path to storyboard JSON (generated if missing)")
     parser.add_argument("--init-image", default=None, help="Path to the first seed image (auto-fetched if omitted)")
     parser.add_argument("--work-dir", default="work", help="Directory to store intermediate clips/frames")
     parser.add_argument("--output", default="output/final_video.mp4", help="Path to write the final merged video")
 
     parser.add_argument("--crossfade", type=float, default=0.0, help="Crossfade duration in seconds between clips")
+    parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip (8-12 recommended)")
     parser.add_argument("--narrate", action="store_true", help="Generate dialogue narration and burn in captions (.srt)")
     parser.add_argument("--dry-run", action="store_true", help="Validate storyboard/inputs without calling any API")
     parser.add_argument("--no-resume", action="store_true", help="Ignore any existing manifest and regenerate all clips")
@@ -197,6 +200,7 @@ def main() -> None:
         dry_run=args.dry_run,
         resume=not args.no_resume,
         history_path=args.history,
+        clip_duration=args.clip_duration,
     )
 
 

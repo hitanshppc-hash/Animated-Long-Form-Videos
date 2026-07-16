@@ -16,7 +16,11 @@ on:
       scenes:
         description: "Number of scenes (only used when auto-generating storyboard)"
         required: false
-        default: "6"
+        default: "40"
+      clip_duration:
+        description: "Seconds per clip (8-12 recommended)"
+        required: false
+        default: "12"
       init_image_path:
         description: "Path to seed image (leave blank to auto-fetch from Pexels)"
         required: false
@@ -64,6 +68,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Set video parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            IDX=$(( ${{ github.run_number }} % 4 ))
+            case $IDX in
+              0) SCENES=25; DURATION=12 ;;   #  5 min
+              1) SCENES=40; DURATION=12 ;;   #  8 min
+              2) SCENES=75; DURATION=12 ;;   # 15 min
+              3) SCENES=100; DURATION=12 ;;  # 20 min
+            esac
+          else
+            SCENES="${{ inputs.scenes }}"
+            DURATION="${{ inputs.clip_duration }}"
+          fi
+          echo "SCENES=$SCENES" >> $GITHUB_ENV
+          echo "CLIP_DURATION=$DURATION" >> $GITHUB_ENV
+          echo "Selected: $SCENES scenes x ${DURATION}s = $(( SCENES * DURATION / 60 )) min video"
+
       - name: Run pipeline
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -82,11 +105,14 @@ jobs:
             NARRATE_FLAG="--narrate"
           fi
 
+          echo "Running pipeline with $SCENES scenes, ${CLIP_DURATION}s each"
+
           python scripts/pipeline.py \
             --storyboard "${{ inputs.storyboard_path }}" \
             --idea "${{ inputs.idea }}" \
-            --scenes "${{ inputs.scenes }}" \
+            --scenes "$SCENES" \
             --crossfade "${{ inputs.crossfade }}" \
+            --clip-duration "$CLIP_DURATION" \
             $IMG_FLAG \
             $NARRATE_FLAG \
             --output output/final_video.mp4

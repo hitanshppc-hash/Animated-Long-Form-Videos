@@ -42,6 +42,40 @@ PROVIDERS = [
 ]
 
 
+def _local_chat(messages, temperature, max_tokens):
+    from local_models import ensure_llm
+    from llama_cpp import Llama
+
+    model_path = ensure_llm()
+    logger.info(f"Loading local LLM: {model_path}")
+    llm = Llama(model_path=model_path, n_ctx=4096, n_threads=os.cpu_count(), verbose=False)
+
+    prompt = ""
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            prompt += f"<|system|>\n{content}\n"
+        elif role == "user":
+            prompt += f"<|user|>\n{content}\n"
+        elif role == "assistant":
+            prompt += f"<|assistant|>\n{content}\n"
+    prompt += "<|assistant|>\n"
+
+    response = llm(
+        prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stop=["<|user|>", "<|system|>", "<|assistant|>"],
+        echo=False,
+    )
+    content = response["choices"][0]["text"].strip()
+    if not content:
+        raise RuntimeError("local LLM returned empty response")
+    logger.info("Success via local LLM")
+    return content
+
+
 def chat_completion(messages, temperature: float = 0.8, max_tokens: int = 2000, providers=None) -> str:
     providers = providers if providers is not None else PROVIDERS
     errors = []
@@ -80,5 +114,10 @@ def chat_completion(messages, temperature: float = 0.8, max_tokens: int = 2000, 
                 logger.warning(f"{provider['name']}/{model} failed: {exc}")
                 errors.append(f"{provider['name']}/{model}: {exc}")
                 continue
+
+    try:
+        return _local_chat(messages, temperature, max_tokens)
+    except Exception as exc:
+        errors.append(f"local_llm: {exc}")
 
     raise RuntimeError("All text-generation providers/models failed:\n" + "\n".join(errors))

@@ -2,6 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
+from extract_keywords import extract_keywords
 from utils import get_logger
 
 logger = get_logger(__name__)
@@ -18,6 +19,7 @@ def generate_clip(
     guidance_scale: float | None = None,
     seed: int | None = None,
     dry_run: bool = False,
+    clip_duration: float = 12.0,
 ) -> None:
     if not Path(image_path).exists():
         raise FileNotFoundError(f"Seed image not found: {image_path}")
@@ -34,8 +36,9 @@ def generate_clip(
 
     from fetch_stock_video import fetch_stock_video
 
-    logger.info(f"Fetching stock video for: {prompt[:70]!r}")
-    fetch_stock_video(prompt, output_path)
+    short_query = extract_keywords(prompt, max_words=5)
+    logger.info(f"Fetching stock video for: {short_query!r} (from {len(prompt)} chars)")
+    fetch_stock_video(short_query, output_path, max_duration=clip_duration)
 
 
 def main() -> None:
@@ -49,6 +52,7 @@ def main() -> None:
     parser.add_argument("--num-inference-steps", type=int)
     parser.add_argument("--guidance-scale", type=float)
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip")
     parser.add_argument("--dry-run", action="store_true", help="Validate inputs without calling the API")
     args = parser.parse_args()
 
@@ -63,6 +67,7 @@ def main() -> None:
         guidance_scale=args.guidance_scale,
         seed=args.seed,
         dry_run=args.dry_run,
+        clip_duration=args.clip_duration,
     )
 
 
