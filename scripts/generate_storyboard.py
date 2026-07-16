@@ -36,6 +36,13 @@ def _extract_json(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
+    raw = re.sub(r'(?<=\w)"(?=\w)', r'\"', raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
     raw = re.sub(r"(?<!\\)'", '"', raw)
 
     try:
