@@ -97,7 +97,7 @@ jobs:
         run: |
           IMG_FLAG=""
           if [ -n "${{ inputs.init_image_path }}" ]; then
-            IMG_FLAG="--init-image \"${{ inputs.init_image_path }}\""
+            IMG_FLAG="--init-image ${{ inputs.init_image_path }}"
           fi
 
           NARRATE_FLAG=""

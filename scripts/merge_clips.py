@@ -39,41 +39,31 @@ def _merge_concat_demuxer(clip_paths: List[str], output_path: str) -> None:
 
 def _merge_with_xfade(clip_paths: List[str], output_path: str, crossfade: float) -> None:
     durations = [_probe_duration(p) for p in clip_paths]
+    n = len(clip_paths)
 
-    filter_parts = []
-    stream_spec = f"[0:v][0:a][1:v][1:a]"
-    offset = durations[0] - crossfade
-    prev_v = "xf0_v"
-    prev_a = "xf0_a"
-    filter_parts.append(f"{stream_spec}xfade=transition=fade:duration={crossfade}:offset={offset}[{prev_v}][{prev_a}]")
-
-    for i in range(2, len(clip_paths)):
-        offset = sum(durations[:i]) - crossfade
-        prev_v_name = prev_v
-        prev_a_name = prev_a
-        cur_v_name = f"xf{i-1}_v"
-        cur_a_name = f"xf{i-1}_a"
-        filter_parts.append(
-            f"[{prev_v_name}][{prev_a_name}][{i}:v][{i}:a]"
-            f"xfade=transition=fade:duration={crossfade}:offset={offset}[{cur_v_name}][{cur_a_name}]"
-        )
-        prev_v, prev_a = cur_v_name, cur_a_name
-
-    filter_complex = "; ".join(filter_parts)
     input_args = []
     for p in clip_paths:
         input_args += ["-i", p]
 
+    parts = []
+    for i in range(1, n):
+        v_in = f"[0:v]" if i == 1 else f"[v{i-1}]"
+        v_lbl = f"vout" if i == n - 1 else f"v{i}"
+        offset = sum(durations[:i]) - i * crossfade
+        parts.append(f"{v_in}[{i}:v]xfade=transition=fade:duration={crossfade}:offset={offset}[{v_lbl}]")
+
+    filter_complex = "; ".join(parts)
+
     subprocess.run(
         ["ffmpeg", "-y"] + input_args +
         ["-filter_complex", filter_complex,
-         "-map", f"[{prev_v}]", "-map", f"[{prev_a}]",
-         "-c:v", "libx264", "-c:a", "aac", output_path],
+         "-map", "[vout]", "-an",
+         "-c:v", "libx264", output_path],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
-    total = sum(durations)
-    logger.info(f"Merged {len(clip_paths)} clips ({crossfade}s crossfade) -> {output_path} ({total:.1f}s)")
+    total = sum(durations) - crossfade * (n - 1)
+    logger.info(f"Merged {n} clips ({crossfade}s crossfade, no audio) -> {output_path} ({total:.1f}s)")
 
 
 def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: float = 0.0) -> None:
@@ -83,8 +73,9 @@ def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: flo
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    if crossfade_duration > 0 and len(clip_paths) > 1:
-        _merge_with_xfade(clip_paths, output_path, crossfade_duration)
+    crossfade = min(crossfade_duration, 2.0)
+    if crossfade > 0 and len(clip_paths) > 1:
+        _merge_with_xfade(clip_paths, output_path, crossfade)
     else:
         _merge_concat_demuxer(clip_paths, output_path)
 

@@ -12,12 +12,6 @@ def generate_clip(
     image_path: str,
     prompt: str,
     output_path: str,
-    model: str | None = None,
-    negative_prompt: str | None = None,
-    num_frames: int | None = None,
-    num_inference_steps: int | None = None,
-    guidance_scale: float | None = None,
-    seed: int | None = None,
     dry_run: bool = False,
     clip_duration: float = 12.0,
 ) -> None:
@@ -46,12 +40,6 @@ def main() -> None:
     parser.add_argument("--image", required=True, help="Path to the seed image")
     parser.add_argument("--prompt", required=True, help="Text prompt describing the motion/scene")
     parser.add_argument("--output", required=True, help="Path to write the output .mp4")
-    parser.add_argument("--model", help="Preferred Hugging Face model id to try first")
-    parser.add_argument("--negative-prompt")
-    parser.add_argument("--num-frames", type=int)
-    parser.add_argument("--num-inference-steps", type=int)
-    parser.add_argument("--guidance-scale", type=float)
-    parser.add_argument("--seed", type=int)
     parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip")
     parser.add_argument("--dry-run", action="store_true", help="Validate inputs without calling the API")
     args = parser.parse_args()
@@ -60,12 +48,6 @@ def main() -> None:
         args.image,
         args.prompt,
         args.output,
-        args.model,
-        negative_prompt=args.negative_prompt,
-        num_frames=args.num_frames,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        seed=args.seed,
         dry_run=args.dry_run,
         clip_duration=args.clip_duration,
     )

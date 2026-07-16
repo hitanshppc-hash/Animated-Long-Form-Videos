@@ -205,6 +205,7 @@ def main() -> None:
 
     parser.add_argument("--crossfade", type=float, default=0.0, help="Crossfade duration in seconds between clips")
     parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip (8-12 recommended)")
+    parser.add_argument("--parallel-workers", type=int, default=3, help="Number of parallel clip download workers")
     parser.add_argument("--narrate", action="store_true", help="Generate dialogue narration and burn in captions (.srt)")
     parser.add_argument("--dry-run", action="store_true", help="Validate storyboard/inputs without calling any API")
     parser.add_argument("--no-resume", action="store_true", help="Ignore any existing manifest and regenerate all clips")
@@ -224,6 +225,7 @@ def main() -> None:
         resume=not args.no_resume,
         history_path=args.history,
         clip_duration=args.clip_duration,
+        parallel_workers=args.parallel_workers,
     )
 
 

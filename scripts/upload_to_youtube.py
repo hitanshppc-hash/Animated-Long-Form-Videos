@@ -11,7 +11,8 @@ def main():
     if not title:
         meta_path = "output/final_video.metadata.json"
         if os.path.exists(meta_path):
-            meta = json.load(open(meta_path))
+            with open(meta_path) as f:
+                meta = json.load(f)
             title = meta.get("title", "Untitled Video")
         else:
             title = "Untitled Video"

@@ -76,14 +76,22 @@ def _generate_batch(
             f"Continue with the next {batch_size} scenes."
         )
 
-    content = chat_completion(
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=8192,
-    )
-    data = _extract_json(content)
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    for attempt in range(3):
+        content = chat_completion(messages=messages, max_tokens=8192)
+        try:
+            data = _extract_json(content)
+            break
+        except ValueError as e:
+            if attempt == 2:
+                raise
+            logger.warning(f"JSON parse failed (attempt {attempt+1}/3): {e}")
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "user", "content": f"The JSON was invalid: {e}\n\nFix the JSON syntax errors. Output ONLY valid JSON — no extra text."})
 
     scenes = data.get("scenes")
     if not scenes or not isinstance(scenes, list):
