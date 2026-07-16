@@ -2,48 +2,9 @@ import argparse
 import os
 from pathlib import Path
 
-from huggingface_hub import InferenceClient
-
-from utils import get_logger, retry
+from utils import get_logger
 
 logger = get_logger(__name__)
-
-DEFAULT_MODEL = "Wan-AI/Wan2.1-I2V-14B-480P"
-
-# (model, provider) pairs tried in order until one succeeds. No genuinely
-# small (<5B) image-to-video model is currently live on Inference Providers —
-# stable-video-diffusion-img2vid-xt and the original LTX-Video have no live
-# provider mapping, and every current-generation I2V model clusters around
-# 13-19B for usable motion quality. The 480P Wan2.1 variant is the cheapest/
-# fastest available (same params, lower output resolution = less compute per
-# clip), so it's tried first; the rest are progressively heavier fallbacks.
-VIDEO_FALLBACKS = [
-    ("Wan-AI/Wan2.1-I2V-14B-480P", "wavespeed"),
-    ("Wan-AI/Wan2.2-I2V-A14B", "fal-ai"),
-    ("Wan-AI/Wan2.2-I2V-A14B", "together"),
-    ("Wan-AI/Wan2.2-I2V-A14B", "wavespeed"),
-    ("Wan-AI/Wan2.1-I2V-14B-720P", "fal-ai"),
-    ("Wan-AI/Wan2.1-I2V-14B-720P", "wavespeed"),
-    ("tencent/HunyuanVideo-I2V", "fal-ai"),
-    ("Lightricks/LTX-2", "fal-ai"),
-    ("Lightricks/LTX-2", "wavespeed"),
-]
-
-
-@retry(attempts=2, base_delay=5.0)
-def _call_image_to_video(token: str, image_path: str, model: str, provider: str, prompt: str, **kwargs) -> bytes:
-    client = InferenceClient(provider=provider, api_key=token)
-    return client.image_to_video(image_path, model=model, prompt=prompt, **kwargs)
-
-
-def _fallback_order(preferred_model: str | None) -> list:
-    if not preferred_model:
-        return VIDEO_FALLBACKS
-    preferred = [pair for pair in VIDEO_FALLBACKS if pair[0] == preferred_model]
-    if not preferred:
-        preferred = [(preferred_model, "fal-ai")]
-    rest = [pair for pair in VIDEO_FALLBACKS if pair[0] != preferred_model]
-    return preferred + rest
 
 
 def generate_clip(
@@ -64,53 +25,17 @@ def generate_clip(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     if dry_run:
-        logger.info(f"[dry-run] Would generate clip: model={model or DEFAULT_MODEL} prompt={prompt!r} -> {output_path}")
+        logger.info(f"[dry-run] Would fetch stock video for prompt={prompt!r} -> {output_path}")
         return
 
-    token = os.environ.get("HF_TOKEN")
-    if not token:
-        raise RuntimeError("HF_TOKEN environment variable is not set")
+    api_key = os.environ.get("PEXELS_API_KEY")
+    if not api_key:
+        raise RuntimeError("PEXELS_API_KEY environment variable is not set — video generation requires a stock video API key")
 
-    extra = {
-        "negative_prompt": negative_prompt,
-        "num_frames": num_frames,
-        "num_inference_steps": num_inference_steps,
-        "guidance_scale": guidance_scale,
-        "seed": seed,
-    }
-    extra = {k: v for k, v in extra.items() if v is not None}
+    from fetch_stock_video import fetch_stock_video
 
-    errors = []
-    for candidate_model, provider in _fallback_order(model):
-        try:
-            logger.info(f"Requesting clip from {candidate_model} via {provider}: {prompt[:70]!r}")
-            video_bytes = _call_image_to_video(token, image_path, candidate_model, provider, prompt, **extra)
-            with open(output_path, "wb") as f:
-                f.write(video_bytes)
-            logger.info(
-                f"Wrote clip via {candidate_model}/{provider}: {output_path} ({len(video_bytes) / 1024:.0f} KB)"
-            )
-            return
-        except Exception as exc:
-            logger.warning(f"{candidate_model}/{provider} failed: {exc}")
-            errors.append(f"{candidate_model}/{provider}: {exc}")
-
-    # Every AI video model/provider option is routed through the same HF
-    # Inference Providers account, so a single billing/quota outage there
-    # takes all of them out at once. Fall back to a real, independent Pexels
-    # stock video clip (separate account) so the pipeline degrades instead
-    # of hard-failing.
-    if os.environ.get("PEXELS_API_KEY"):
-        try:
-            from fetch_stock_video import fetch_stock_video
-
-            logger.warning("All AI video generation options failed, falling back to a Pexels stock clip")
-            fetch_stock_video(prompt, output_path)
-            return
-        except Exception as exc:
-            errors.append(f"pexels-stock-fallback: {exc}")
-
-    raise RuntimeError("All video-generation options (AI models and stock fallback) failed:\n" + "\n".join(errors))
+    logger.info(f"Fetching stock video for: {prompt[:70]!r}")
+    fetch_stock_video(prompt, output_path)
 
 
 def main() -> None:

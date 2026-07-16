@@ -5,7 +5,7 @@ import shutil
 import time
 from pathlib import Path
 
-from generate_clip import generate_clip, DEFAULT_MODEL
+from generate_clip import generate_clip
 from generate_storyboard import generate_storyboard
 from generate_dialogue_audio import generate_dialogue_track, write_srt
 from extract_last_frame import extract_last_frame
@@ -38,7 +38,6 @@ def run_pipeline(
     init_image: str | None,
     work_dir: str,
     output_path: str,
-    model: str,
     idea: str = "",
     num_scenes: int = 6,
     crossfade: float = 0.0,
@@ -101,7 +100,6 @@ def run_pipeline(
             current_image,
             full_prompt,
             str(clip_path),
-            scene.get("model", model),
             negative_prompt=scene.get("negative_prompt"),
             num_frames=scene.get("num_frames"),
             num_inference_steps=scene.get("num_inference_steps"),
@@ -179,7 +177,7 @@ def main() -> None:
     parser.add_argument("--init-image", default=None, help="Path to the first seed image (auto-fetched if omitted)")
     parser.add_argument("--work-dir", default="work", help="Directory to store intermediate clips/frames")
     parser.add_argument("--output", default="output/final_video.mp4", help="Path to write the final merged video")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Preferred Hugging Face model id to try first")
+
     parser.add_argument("--crossfade", type=float, default=0.0, help="Crossfade duration in seconds between clips")
     parser.add_argument("--narrate", action="store_true", help="Generate dialogue narration and burn in captions (.srt)")
     parser.add_argument("--dry-run", action="store_true", help="Validate storyboard/inputs without calling any API")
@@ -192,7 +190,6 @@ def main() -> None:
         args.init_image,
         args.work_dir,
         args.output,
-        args.model,
         idea=args.idea,
         num_scenes=args.scenes,
         crossfade=args.crossfade,

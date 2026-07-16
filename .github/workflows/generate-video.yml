@@ -8,17 +8,21 @@ on:
         required: false
         default: "storyboard.example.json"
       init_image_path:
-        description: "Path to the initial seed image (leave blank to auto-fetch from Pexels or generate a placeholder)"
+        description: "Path to the initial seed image (leave blank to auto-fetch from Pexels)"
         required: false
         default: ""
-      model:
-        description: "Hugging Face model id for image-to-video"
+      title:
+        description: "YouTube video title (leave blank to use storyboard title)"
         required: false
-        default: "Wan-AI/Wan2.2-I2V-A14B"
-      crossfade:
-        description: "Crossfade duration in seconds between clips (0 = hard cuts)"
+        default: ""
+      description:
+        description: "YouTube video description (leave blank for auto-generated)"
         required: false
-        default: "0"
+        default: ""
+      privacy:
+        description: "YouTube privacy: public, unlisted, private"
+        required: false
+        default: "unlisted"
 
 concurrency:
   group: generate-video
@@ -41,16 +45,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Verify HF_TOKEN secret is set
-        run: |
-          if [ -z "${{ secrets.HF_TOKEN }}" ]; then
-            echo "::error::HF_TOKEN repository secret is not set. Add it under Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-
       - name: Run pipeline
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           IMG_FLAG=""
@@ -60,8 +56,6 @@ jobs:
           python scripts/pipeline.py \
             --storyboard "${{ inputs.storyboard_path }}" \
             $IMG_FLAG \
-            --model "${{ inputs.model }}" \
-            --crossfade "${{ inputs.crossfade }}" \
             --output output/final_video.mp4
 
       - name: Upload final video
@@ -71,6 +65,45 @@ jobs:
           name: final-video
           path: output/final_video.mp4
           retention-days: 14
+
+      - name: Upload to YouTube
+        if: success()
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YT_VIDEO_TITLE: ${{ inputs.title }}
+          YT_VIDEO_DESC: ${{ inputs.description }}
+          YT_PRIVACY: ${{ inputs.privacy }}
+        run: |
+          if [ -z "$YT_REFRESH_TOKEN" ]; then
+            echo "YouTube secrets not configured — skipping upload"
+            exit 0
+          fi
+          python -c "
+import json, os, sys
+sys.path.insert(0, 'scripts')
+from youtube_upload import upload
+
+title = os.environ.get('YT_VIDEO_TITLE', '').strip()
+if not title:
+    title = json.load(open('storyboard.example.json')).get('title', 'Untitled Video')
+
+desc = os.environ.get('YT_VIDEO_DESC', '').strip()
+if not desc:
+    desc = 'Generated with the Animated Long-Form Video Pipeline'
+
+privacy = os.environ.get('YT_PRIVACY', 'unlisted').strip().lower()
+
+url = upload(
+    'output/final_video.mp4',
+    title=title,
+    description=desc,
+    tags=['animation', 'long-form', 'ai-generated'],
+    privacy=privacy,
+)
+print(f'Uploaded: {url}')
+"
 
       - name: Upload work directory (debug on failure)
         if: failure()
