@@ -40,10 +40,24 @@ def retry(attempts: int = 4, base_delay: float = 5.0, exceptions: tuple = (Excep
 
 def video_duration(path: str) -> float:
     import json as _json
+    import shutil as _shutil
     import subprocess as _sub
-
-    raw = _sub.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", path]
-    )
-    return float(_json.loads(raw)["format"]["duration"])
+    probe = _shutil.which("ffprobe") or _shutil.which("ffmpeg")
+    if not probe:
+        from moviepy import VideoFileClip
+        with VideoFileClip(path) as clip:
+            return clip.duration
+    if "ffprobe" in probe:
+        raw = _sub.check_output(
+            [probe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", path]
+        )
+        return float(_json.loads(raw)["format"]["duration"])
+    result = _sub.run([probe, "-i", path, "-f", "null", "-"],
+                      capture_output=True, text=True)
+    for line in result.stderr.split("\n"):
+        if "Duration" in line:
+            dur = line.split("Duration: ")[1].split(",")[0].strip()
+            h, m, s = dur.split(":")
+            return float(h) * 3600 + float(m) * 60 + float(s)
+    raise RuntimeError(f"Could not probe duration for {path}")

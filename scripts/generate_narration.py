@@ -62,10 +62,25 @@ def _estimate_timings(text, duration):
 
 def _probe(path):
     import json as _json
-    raw = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", path])
-    return float(_json.loads(raw)["format"]["duration"])
+    import shutil as _shutil
+    exe = _shutil.which("ffprobe") or _shutil.which("ffmpeg") or ""
+    if not exe:
+        from moviepy import AudioFileClip
+        with AudioFileClip(path) as clip:
+            return clip.duration
+    if "ffprobe" in exe:
+        raw = subprocess.check_output(
+            [exe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", path])
+        return float(_json.loads(raw)["format"]["duration"])
+    result = subprocess.run([exe, "-i", path, "-f", "null", "-"],
+                            capture_output=True, text=True)
+    for line in result.stderr.split("\n"):
+        if "Duration" in line:
+            dur = line.split("Duration: ")[1].split(",")[0].strip()
+            h, m, s = dur.split(":")
+            return float(h) * 3600 + float(m) * 60 + float(s)
+    raise RuntimeError(f"Could not probe duration for {path}")
 
 
 # ---------------------------------------------------------------- ElevenLabs

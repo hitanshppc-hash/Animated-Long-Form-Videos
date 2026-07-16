@@ -12,11 +12,26 @@ logger = get_logger(__name__)
 
 def _probe_duration(path: str) -> float:
     import json as _json
-    raw = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", path]
-    )
-    return float(_json.loads(raw)["format"]["duration"])
+    import shutil as _shutil
+    probe = _shutil.which("ffprobe") or _shutil.which("ffmpeg")
+    if not probe:
+        from moviepy import VideoFileClip
+        with VideoFileClip(path) as clip:
+            return clip.duration
+    if "ffprobe" in probe:
+        raw = subprocess.check_output(
+            [probe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", path]
+        )
+        return float(_json.loads(raw)["format"]["duration"])
+    result = subprocess.run([probe, "-i", path, "-f", "null", "-"],
+                            capture_output=True, text=True)
+    for line in result.stderr.split("\n"):
+        if "Duration" in line:
+            dur = line.split("Duration: ")[1].split(",")[0].strip()
+            h, m, s = dur.split(":")
+            return float(h) * 3600 + float(m) * 60 + float(s)
+    raise RuntimeError(f"Could not probe duration for {path}")
 
 
 def _merge_concat_demuxer(clip_paths: List[str], output_path: str) -> None:
