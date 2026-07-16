@@ -8,8 +8,9 @@ on:
         required: false
         default: "storyboard.example.json"
       init_image_path:
-        description: "Path to the initial seed image (committed in the repo, e.g. assets/seed.png)"
-        required: true
+        description: "Path to the initial seed image (leave blank to auto-fetch from Pexels or generate a placeholder)"
+        required: false
+        default: ""
       model:
         description: "Hugging Face model id for image-to-video"
         required: false
@@ -50,10 +51,15 @@ jobs:
       - name: Run pipeline
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
+          IMG_FLAG=""
+          if [ -n "${{ inputs.init_image_path }}" ]; then
+            IMG_FLAG="--init-image \"${{ inputs.init_image_path }}\""
+          fi
           python scripts/pipeline.py \
             --storyboard "${{ inputs.storyboard_path }}" \
-            --init-image "${{ inputs.init_image_path }}" \
+            $IMG_FLAG \
             --model "${{ inputs.model }}" \
             --crossfade "${{ inputs.crossfade }}" \
             --output output/final_video.mp4
