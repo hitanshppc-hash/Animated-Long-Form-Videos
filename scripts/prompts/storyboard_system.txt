@@ -26,8 +26,8 @@ markdown, no commentary) matching this exact schema:
 
 {"title": "...", "world_description": "...",
  "characters": [{"name": "...", "description": "...", "personality": "..."}],
- "scenes": [{"prompt": "...", "action": "...",
-             "dialogue": [{"character": "...", "line": "..."}]}],
+ "scenes": [{"prompt": "...", "action": "...", "tone": "...",
+              "dialogue": [{"character": "...", "line": "..."}]}],
  "summary": "..."}
 
 'title' (only required on the FIRST batch, otherwise repeat the one you were
@@ -59,7 +59,9 @@ two to three sentences, always specifying a vibrant animated style like
 '2D animation style' or 'Pixar-like 3D animation style', never
 photorealistic); 'action' — an ultra-detailed beat-by-beat description of
 what each character physically does and how they emote in this shot, true
-to their personality; 'dialogue' — the actual lines spoken in this scene
+to their personality; 'tone' — the narrative tone of this scene, one of:
+expository, dialogue, tension, action, wonder, mystery, sadness, joy;
+'dialogue' — the actual lines spoken in this scene
 (can be an empty list for a silent/action-only shot), each with the exact
 speaking character's name (matching the roster) and their line written in a
 voice true to that character's personality — real dialogue with subtext and

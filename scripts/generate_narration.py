@@ -15,6 +15,32 @@ logger = get_logger(__name__)
 DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"  # George - Warm, Captivating Storyteller
 TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
+TONE_VOICE_MAP = {
+    "expository": "en-US-AriaNeural",
+    "dialogue": "en-US-JennyNeural",
+    "tension": "en-US-AriaNeural",
+    "action": "en-US-AriaNeural",
+    "wonder": "en-GB-SoniaNeural",
+    "mystery": "en-US-MichelleNeural",
+    "sadness": "en-US-JennyNeural",
+    "joy": "en-US-AnaNeural",
+}
+
+TONE_VOICE_DESCRIPTION = {
+    "expository": "Warm, clear — world-building",
+    "dialogue": "Natural, expressive — conversation",
+    "tension": "Focused, urgent — danger",
+    "action": "Energetic — high motion",
+    "wonder": "Soft, elegant — awe, discovery",
+    "mystery": "Crisp — suspense",
+    "sadness": "Gentle, emotional — melancholy",
+    "joy": "Bright, youthful — happy",
+}
+
+
+def voice_for_tone(tone: str) -> str:
+    return TONE_VOICE_MAP.get(tone, "en-US-AriaNeural")
+
 
 # ------------------------------------------------------------------- helpers
 def _words_of(text):

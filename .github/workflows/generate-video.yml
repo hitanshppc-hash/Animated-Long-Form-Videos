@@ -29,7 +29,7 @@ on:
         description: "Enable narration/dialogue audio (requires ElevenLabs key)"
         type: boolean
         required: false
-        default: false
+        default: true
       crossfade:
         description: "Crossfade seconds between clips (0 = hard cuts)"
         required: false

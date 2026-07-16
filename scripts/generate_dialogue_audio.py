@@ -21,13 +21,6 @@ def assign_voices(character_names: list) -> dict:
     return {name: VOICE_POOL[i % len(VOICE_POOL)] for i, name in enumerate(sorted(set(character_names)))}
 
 
-def _audio_duration(path: str) -> float:
-    from moviepy import AudioFileClip
-
-    with AudioFileClip(path) as clip:
-        return clip.duration
-
-
 def generate_dialogue_track(scenes: list, work_dir: str, output_path: str, max_workers: int = 4) -> list:
     from moviepy import AudioClip, AudioFileClip, concatenate_audioclips
 

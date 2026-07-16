@@ -1,12 +1,79 @@
 import argparse
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import List
-
-from moviepy import AudioFileClip, VideoFileClip, concatenate_videoclips, vfx
 
 from utils import get_logger
 
 logger = get_logger(__name__)
+
+
+def _probe_duration(path: str) -> float:
+    import json as _json
+    raw = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "json", path]
+    )
+    return float(_json.loads(raw)["format"]["duration"])
+
+
+def _merge_concat_demuxer(clip_paths: List[str], output_path: str) -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        for p in clip_paths:
+            f.write(f"file '{Path(p).resolve()}'\n")
+        list_path = f.name
+
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+             "-i", list_path, "-c", "copy", output_path],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    finally:
+        os.unlink(list_path)
+
+    logger.info(f"Merged {len(clip_paths)} clips (hard cuts) -> {output_path}")
+
+
+def _merge_with_xfade(clip_paths: List[str], output_path: str, crossfade: float) -> None:
+    durations = [_probe_duration(p) for p in clip_paths]
+
+    filter_parts = []
+    stream_spec = f"[0:v][0:a][1:v][1:a]"
+    offset = durations[0] - crossfade
+    prev_v = "xf0_v"
+    prev_a = "xf0_a"
+    filter_parts.append(f"{stream_spec}xfade=transition=fade:duration={crossfade}:offset={offset}[{prev_v}][{prev_a}]")
+
+    for i in range(2, len(clip_paths)):
+        offset = sum(durations[:i]) - crossfade
+        prev_v_name = prev_v
+        prev_a_name = prev_a
+        cur_v_name = f"xf{i-1}_v"
+        cur_a_name = f"xf{i-1}_a"
+        filter_parts.append(
+            f"[{prev_v_name}][{prev_a_name}][{i}:v][{i}:a]"
+            f"xfade=transition=fade:duration={crossfade}:offset={offset}[{cur_v_name}][{cur_a_name}]"
+        )
+        prev_v, prev_a = cur_v_name, cur_a_name
+
+    filter_complex = "; ".join(filter_parts)
+    input_args = []
+    for p in clip_paths:
+        input_args += ["-i", p]
+
+    subprocess.run(
+        ["ffmpeg", "-y"] + input_args +
+        ["-filter_complex", filter_complex,
+         "-map", f"[{prev_v}]", "-map", f"[{prev_a}]",
+         "-c:v", "libx264", "-c:a", "aac", output_path],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    total = sum(durations)
+    logger.info(f"Merged {len(clip_paths)} clips ({crossfade}s crossfade) -> {output_path} ({total:.1f}s)")
 
 
 def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: float = 0.0) -> None:
@@ -16,25 +83,10 @@ def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: flo
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    clips = [VideoFileClip(p) for p in clip_paths]
-    try:
-        if crossfade_duration > 0 and len(clips) > 1:
-            logger.info(f"Merging {len(clips)} clips with {crossfade_duration}s crossfade")
-            faded = [clips[0]] + [c.with_effects([vfx.CrossFadeIn(crossfade_duration)]) for c in clips[1:]]
-            final = concatenate_videoclips(faded, method="compose", padding=-crossfade_duration)
-        else:
-            logger.info(f"Merging {len(clips)} clips (hard cuts)")
-            final = concatenate_videoclips(clips, method="compose")
-
-        try:
-            final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
-        finally:
-            final.close()
-
-        logger.info(f"Wrote merged video: {output_path} ({final.duration:.1f}s)")
-    finally:
-        for c in clips:
-            c.close()
+    if crossfade_duration > 0 and len(clip_paths) > 1:
+        _merge_with_xfade(clip_paths, output_path, crossfade_duration)
+    else:
+        _merge_concat_demuxer(clip_paths, output_path)
 
 
 def attach_narration(video_path: str, audio_path: str, output_path: str) -> None:
@@ -45,20 +97,26 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    video = VideoFileClip(video_path)
-    audio = AudioFileClip(audio_path)
-    try:
-        if audio.duration > video.duration:
-            audio = audio.subclipped(0, video.duration)
-        final = video.with_audio(audio)
-        try:
-            final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
-        finally:
-            final.close()
-        logger.info(f"Wrote narrated video: {output_path}")
-    finally:
-        video.close()
-        audio.close()
+    video_dur = _probe_duration(video_path)
+    audio_dur = _probe_duration(audio_path)
+
+    if audio_dur > video_dur:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
+             "-map", "0:v", "-map", "1:a",
+             "-ss", "0", "-t", str(video_dur),
+             "-c:v", "copy", "-c:a", "aac", output_path],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    else:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
+             "-map", "0:v", "-map", "1:a",
+             "-c:v", "copy", "-c:a", "aac", output_path],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+    logger.info(f"Wrote narrated video: {output_path}")
 
 
 def main() -> None:

@@ -81,7 +81,7 @@ def _generate_batch(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=6000,
+        max_tokens=8192,
     )
     data = _extract_json(content)
 
@@ -93,6 +93,7 @@ def _generate_batch(
             raise ValueError(f"Scene {i} missing 'prompt': {scene}")
         scene.setdefault("action", "")
         scene.setdefault("dialogue", [])
+        scene.setdefault("tone", "expository")
 
     return data
 

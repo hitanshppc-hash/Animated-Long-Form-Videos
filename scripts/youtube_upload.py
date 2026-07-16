@@ -61,7 +61,7 @@ def upload(path, title, description, tags, privacy="public", hook=None, comment=
         },
     }
 
-    media = MediaFileUpload(path, chunksize=-1, resumable=True, mimetype="video/mp4")
+    media = MediaFileUpload(path, chunksize=256 * 1024 * 1024, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(
         part="snippet,status", body=body, media_body=media)
 

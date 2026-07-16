@@ -39,7 +39,11 @@ def retry(attempts: int = 4, base_delay: float = 5.0, exceptions: tuple = (Excep
 
 
 def video_duration(path: str) -> float:
-    from moviepy import VideoFileClip
+    import json as _json
+    import subprocess as _sub
 
-    with VideoFileClip(path) as clip:
-        return clip.duration
+    raw = _sub.check_output(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "json", path]
+    )
+    return float(_json.loads(raw)["format"]["duration"])

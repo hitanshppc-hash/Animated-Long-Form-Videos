@@ -9,7 +9,12 @@ from youtube_upload import upload
 def main():
     title = os.environ.get("YT_VIDEO_TITLE", "").strip()
     if not title:
-        title = json.load(open("storyboard.example.json")).get("title", "Untitled Video")
+        meta_path = "output/final_video.metadata.json"
+        if os.path.exists(meta_path):
+            meta = json.load(open(meta_path))
+            title = meta.get("title", "Untitled Video")
+        else:
+            title = "Untitled Video"
 
     desc = os.environ.get("YT_VIDEO_DESC", "").strip()
     if not desc:

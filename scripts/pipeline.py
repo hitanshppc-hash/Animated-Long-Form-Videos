@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from generate_clip import generate_clip
@@ -46,6 +47,7 @@ def run_pipeline(
     resume: bool = True,
     history_path: str = "history.json",
     clip_duration: float = 12.0,
+    parallel_workers: int = 3,
 ) -> None:
     start_time = time.monotonic()
     work = Path(work_dir)
@@ -79,44 +81,65 @@ def run_pipeline(
     manifest_path = work / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if resume and manifest_path.exists() else {}
 
-    clip_paths = []
-    current_image = init_image
+    clip_paths = [None] * len(scenes)
+    pending = []
 
     for i, scene in enumerate(scenes):
-        clip_path = work / f"clip_{i:03d}.mp4"
-        frame_path = work / f"frame_{i:03d}.png"
+        clip_path = str(work / f"clip_{i:03d}.mp4")
+        frame_path = str(work / f"frame_{i:03d}.png")
         key = str(i)
 
-        if resume and manifest.get(key) == "done" and clip_path.exists() and frame_path.exists():
+        if resume and manifest.get(key) == "done" and Path(clip_path).exists() and Path(frame_path).exists():
             logger.info(f"[{i + 1}/{len(scenes)}] Skipping (already generated): {scene['prompt'][:60]}")
-            clip_paths.append(str(clip_path))
-            current_image = str(frame_path)
+            clip_paths[i] = clip_path
             continue
 
-        scene_prefix = f"World: {world_ctx} " if world_ctx else ""
-        full_prompt = scene_prefix + character_ctx + scene["prompt"]
+        pending.append((i, scene, clip_path, frame_path))
 
-        logger.info(f"[{i + 1}/{len(scenes)}] Generating clip: {scene['prompt'][:60]}")
-        generate_clip(
-            current_image,
-            scene["prompt"],
-            str(clip_path),
-            negative_prompt=scene.get("negative_prompt"),
-            num_frames=scene.get("num_frames"),
-            num_inference_steps=scene.get("num_inference_steps"),
-            guidance_scale=scene.get("guidance_scale"),
-            seed=scene.get("seed"),
-            dry_run=dry_run,
-            clip_duration=clip_duration,
-        )
-        clip_paths.append(str(clip_path))
+    if pending and not dry_run and parallel_workers > 1:
+        logger.info(f"Generating {len(pending)} clips in parallel ({parallel_workers} workers)...")
 
-        if not dry_run:
-            extract_last_frame(str(clip_path), str(frame_path))
-            current_image = str(frame_path)
+        def _gen(item):
+            idx, scene, clip_path, frame_path = item
+            generate_clip(
+                init_image,
+                scene["prompt"],
+                clip_path,
+                clip_duration=clip_duration,
+            )
+            extract_last_frame(clip_path, frame_path)
+            return idx, clip_path
 
-            manifest[key] = "done"
-            manifest_path.write_text(json.dumps(manifest, indent=2))
+        with ThreadPoolExecutor(max_workers=parallel_workers) as pool:
+            fut_map = {pool.submit(_gen, item): item[0] for item in pending}
+            for future in as_completed(fut_map):
+                idx, clip_path = future.result()
+                clip_paths[idx] = clip_path
+                logger.info(f"[{idx + 1}/{len(scenes)}] Generated clip: {scenes[idx]['prompt'][:60]}")
+
+        for idx, _, _, _ in pending:
+            manifest[str(idx)] = "done"
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    elif pending:
+        current_image = init_image
+        for idx, scene, clip_path, frame_path in pending:
+            logger.info(f"[{idx + 1}/{len(scenes)}] Generating clip: {scene['prompt'][:60]}")
+            generate_clip(
+                current_image,
+                scene["prompt"],
+                clip_path,
+                clip_duration=clip_duration,
+            )
+            clip_paths[idx] = clip_path
+
+            if not dry_run:
+                extract_last_frame(clip_path, frame_path)
+                current_image = frame_path
+                manifest[str(idx)] = "done"
+                manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    clip_paths = [p for p in clip_paths if p is not None]
 
     if dry_run:
         logger.info(f"[dry-run] Would merge {len(clip_paths)} clips into {output_path}")
