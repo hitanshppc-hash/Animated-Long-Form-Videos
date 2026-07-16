@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -12,8 +13,7 @@ logger = get_logger(__name__)
 
 def _probe_duration(path: str) -> float:
     import json as _json
-    import shutil as _shutil
-    probe = _shutil.which("ffprobe") or _shutil.which("ffmpeg")
+    probe = shutil.which("ffprobe") or shutil.which("ffmpeg")
     if not probe:
         from moviepy import VideoFileClip
         with VideoFileClip(path) as clip:
@@ -34,25 +34,86 @@ def _probe_duration(path: str) -> float:
     raise RuntimeError(f"Could not probe duration for {path}")
 
 
-def _merge_concat_demuxer(clip_paths: List[str], output_path: str) -> None:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        for p in clip_paths:
-            f.write(f"file '{Path(p).resolve()}'\n")
-        list_path = f.name
+def _run_ff(cmd: list, desc: str = "ffmpeg") -> None:
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        err = result.stderr[:600]
+        raise RuntimeError(f"{desc} failed (rc={result.returncode}): {err}")
 
+
+# -------------------------------------------------------------------- concat
+def _try_concat_demuxer(clip_paths: List[str], output_path: str) -> bool:
     try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-             "-i", list_path, "-c", "copy", output_path],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    finally:
-        os.unlink(list_path)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            for p in clip_paths:
+                f.write(f"file '{Path(p).resolve()}'\n")
+            list_path = f.name
+        try:
+            _run_ff(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", list_path, "-c", "copy", output_path],
+                "concat demuxer",
+            )
+            logger.info(f"Merged {len(clip_paths)} clips (hard cuts) -> {output_path}")
+            return True
+        finally:
+            os.unlink(list_path)
+    except Exception as e:
+        logger.warning(f"concat demuxer failed: {e}")
+        return False
 
-    logger.info(f"Merged {len(clip_paths)} clips (hard cuts) -> {output_path}")
+
+def _try_concat_reencode(clip_paths: List[str], output_path: str) -> bool:
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            for p in clip_paths:
+                f.write(f"file '{Path(p).resolve()}'\n")
+            list_path = f.name
+        try:
+            _run_ff(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                 "-i", list_path, "-c:v", "libx264", "-an", output_path],
+                "concat re-encode",
+            )
+            logger.info(f"Re-encoded merge of {len(clip_paths)} clips -> {output_path}")
+            return True
+        finally:
+            os.unlink(list_path)
+    except Exception as e:
+        logger.warning(f"concat re-encode failed: {e}")
+        return False
 
 
-def _merge_with_xfade(clip_paths: List[str], output_path: str, crossfade: float) -> None:
+def _try_moviepy_concat(clip_paths: List[str], output_path: str) -> bool:
+    try:
+        from moviepy import VideoFileClip, concatenate_videoclips
+        clips = [VideoFileClip(p) for p in clip_paths]
+        try:
+            final = concatenate_videoclips(clips, method="compose")
+            final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+            final.close()
+        finally:
+            for c in clips:
+                c.close()
+        logger.info(f"MoviePy merge of {len(clip_paths)} clips -> {output_path}")
+        return True
+    except Exception as e:
+        logger.warning(f"moviepy concat failed: {e}")
+        return False
+
+
+def _merge_concat(clip_paths: List[str], output_path: str) -> None:
+    for fn in [_try_concat_demuxer, _try_concat_reencode, _try_moviepy_concat]:
+        if fn(clip_paths, output_path):
+            return
+    raise RuntimeError(f"All concat methods failed for {len(clip_paths)} clips")
+
+
+# ------------------------------------------------------------- xfade (batched)
+_BATCH_SIZE = 10
+
+
+def _xfade_batch(clip_paths: List[str], output_path: str, crossfade: float) -> None:
     durations = [_probe_duration(p) for p in clip_paths]
     n = len(clip_paths)
 
@@ -68,22 +129,57 @@ def _merge_with_xfade(clip_paths: List[str], output_path: str, crossfade: float)
         parts.append(f"{v_in}[{i}:v]xfade=transition=fade:duration={crossfade}:offset={offset}[{v_lbl}]")
 
     filter_complex = "; ".join(parts)
-
-    result = subprocess.run(
+    _run_ff(
         ["ffmpeg", "-y"] + input_args +
         ["-filter_complex", filter_complex,
          "-map", "[vout]", "-an",
          "-c:v", "libx264", output_path],
-        capture_output=True, text=True,
+        "xfade",
     )
-    if result.returncode != 0:
-        err = result.stderr[:500]
-        raise RuntimeError(f"ffmpeg xfade failed (rc={result.returncode}): {err}")
-
     total = sum(durations) - crossfade * (n - 1)
-    logger.info(f"Merged {n} clips ({crossfade}s crossfade, no audio) -> {output_path} ({total:.1f}s)")
+    logger.info(f"xfade batch of {n} clips ({crossfade}s) -> {output_path} ({total:.1f}s)")
 
 
+def _try_xfade_sequential(clip_paths: List[str], output_path: str, crossfade: float) -> bool:
+    try:
+        _xfade_batch(clip_paths, output_path, crossfade)
+        return True
+    except Exception as e:
+        logger.warning(f"xfade all-at-once failed ({e}); trying batched xfade")
+        return False
+
+
+def _try_xfade_batched(clip_paths: List[str], output_path: str, crossfade: float) -> bool:
+    try:
+        work_dir = Path(output_path).parent / ".__xfade_batches"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        batch_files = []
+        for i in range(0, len(clip_paths), _BATCH_SIZE):
+            batch = clip_paths[i:i + _BATCH_SIZE]
+            batch_out = str(work_dir / f"batch_{i:04d}.mp4")
+            try:
+                _xfade_batch(batch, batch_out, crossfade)
+            except Exception:
+                _merge_concat(batch, batch_out)
+            batch_files.append(batch_out)
+        _merge_concat(batch_files, output_path)
+        for f in batch_files:
+            try:
+                os.unlink(f)
+            except OSError:
+                pass
+        try:
+            work_dir.rmdir()
+        except OSError:
+            pass
+        logger.info(f"Batched xfade merge of {len(clip_paths)} clips -> {output_path}")
+        return True
+    except Exception as e:
+        logger.warning(f"batched xfade failed ({e})")
+        return False
+
+
+# ------------------------------------------------------------------- public
 def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: float = 0.0) -> None:
     for clip in clip_paths:
         if not Path(clip).exists():
@@ -92,13 +188,15 @@ def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: flo
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     crossfade = min(crossfade_duration, 2.0)
+
     if crossfade > 0 and len(clip_paths) > 1:
-        try:
-            _merge_with_xfade(clip_paths, output_path, crossfade)
+        if _try_xfade_sequential(clip_paths, output_path, crossfade):
             return
-        except Exception as exc:
-            logger.warning(f"xfade merge failed ({exc}), falling back to hard cuts")
-    _merge_concat_demuxer(clip_paths, output_path)
+        if _try_xfade_batched(clip_paths, output_path, crossfade):
+            return
+        logger.warning("All xfade methods failed, falling back to hard cuts")
+
+    _merge_concat(clip_paths, output_path)
 
 
 def attach_narration(video_path: str, audio_path: str, output_path: str) -> None:
@@ -109,26 +207,36 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    video_dur = _probe_duration(video_path)
-    audio_dur = _probe_duration(audio_path)
-
-    if audio_dur > video_dur:
-        subprocess.run(
+    duration = _probe_duration(video_path)
+    try:
+        _run_ff(
             ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
              "-map", "0:v", "-map", "1:a",
-             "-ss", "0", "-t", str(video_dur),
+             "-ss", "0", "-t", str(duration),
              "-c:v", "copy", "-c:a", "aac", output_path],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            "attach_narration",
         )
-    else:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
-             "-map", "0:v", "-map", "1:a",
-             "-c:v", "copy", "-c:a", "aac", output_path],
-            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        logger.info(f"Wrote narrated video: {output_path}")
+        return
+    except Exception as e:
+        logger.warning(f"ffmpeg narration attach failed ({e}), trying moviepy")
 
-    logger.info(f"Wrote narrated video: {output_path}")
+    try:
+        from moviepy import AudioFileClip, VideoFileClip
+        video = VideoFileClip(video_path)
+        audio = AudioFileClip(audio_path)
+        try:
+            if audio.duration > video.duration:
+                audio = audio.subclipped(0, video.duration)
+            final = video.with_audio(audio)
+            final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+            final.close()
+        finally:
+            video.close()
+            audio.close()
+        logger.info(f"Wrote narrated video (moviepy fallback): {output_path}")
+    except Exception as e2:
+        raise RuntimeError(f"All narration attach methods failed: {e2}")
 
 
 def main() -> None:
