@@ -69,13 +69,16 @@ def _merge_with_xfade(clip_paths: List[str], output_path: str, crossfade: float)
 
     filter_complex = "; ".join(parts)
 
-    subprocess.run(
+    result = subprocess.run(
         ["ffmpeg", "-y"] + input_args +
         ["-filter_complex", filter_complex,
          "-map", "[vout]", "-an",
          "-c:v", "libx264", output_path],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        capture_output=True, text=True,
     )
+    if result.returncode != 0:
+        err = result.stderr[:500]
+        raise RuntimeError(f"ffmpeg xfade failed (rc={result.returncode}): {err}")
 
     total = sum(durations) - crossfade * (n - 1)
     logger.info(f"Merged {n} clips ({crossfade}s crossfade, no audio) -> {output_path} ({total:.1f}s)")
@@ -90,9 +93,12 @@ def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: flo
 
     crossfade = min(crossfade_duration, 2.0)
     if crossfade > 0 and len(clip_paths) > 1:
-        _merge_with_xfade(clip_paths, output_path, crossfade)
-    else:
-        _merge_concat_demuxer(clip_paths, output_path)
+        try:
+            _merge_with_xfade(clip_paths, output_path, crossfade)
+            return
+        except Exception as exc:
+            logger.warning(f"xfade merge failed ({exc}), falling back to hard cuts")
+    _merge_concat_demuxer(clip_paths, output_path)
 
 
 def attach_narration(video_path: str, audio_path: str, output_path: str) -> None:
