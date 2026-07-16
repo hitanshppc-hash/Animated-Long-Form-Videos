@@ -41,7 +41,7 @@ on:
       privacy:
         description: "YouTube privacy: public, unlisted, private"
         required: false
-        default: "unlisted"
+        default: "public"
 
 concurrency:
   group: generate-video

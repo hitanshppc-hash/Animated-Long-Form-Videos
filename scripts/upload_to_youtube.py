@@ -18,7 +18,7 @@ def main():
     tags_input = os.environ.get("YT_VIDEO_TAGS", "").strip()
     tags = [t.strip() for t in tags_input.split(",") if t.strip()] if tags_input else ["animation", "long-form", "ai-generated"]
 
-    privacy = os.environ.get("YT_PRIVACY", "unlisted").strip().lower()
+    privacy = os.environ.get("YT_PRIVACY", "public").strip().lower()
 
     url = upload(
         "output/final_video.mp4",
