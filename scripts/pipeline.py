@@ -99,7 +99,7 @@ def run_pipeline(
         logger.info(f"[{i + 1}/{len(scenes)}] Generating clip: {scene['prompt'][:60]}")
         generate_clip(
             current_image,
-            full_prompt,
+            scene["prompt"],
             str(clip_path),
             negative_prompt=scene.get("negative_prompt"),
             num_frames=scene.get("num_frames"),
