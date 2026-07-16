@@ -14,12 +14,34 @@ DEFAULT_BATCH_SIZE = 10
 
 
 def _extract_json(text: str) -> dict:
-    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.MULTILINE)
+    cleaned = re.sub(r"(?s)^\s*(?:```(?:json)?\s*)?(.*?)(?:\s*```)?\s*$", r"\1", text.strip())
+
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start == -1 or end == -1:
         raise ValueError(f"No JSON object found in model output: {text[:200]!r}")
-    return json.loads(cleaned[start : end + 1])
+
+    raw = cleaned[start : end + 1]
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    raw = re.sub(r",\s*}", "}", raw)
+    raw = re.sub(r",\s*]", "]", raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    raw = re.sub(r"(?<!\\)'", '"', raw)
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in model output (near char {exc.pos}): {raw[exc.pos-100:exc.pos+100]!r}") from exc
 
 
 def _generate_batch(
@@ -59,7 +81,7 @@ def _generate_batch(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=4000,
+        max_tokens=6000,
     )
     data = _extract_json(content)
 
