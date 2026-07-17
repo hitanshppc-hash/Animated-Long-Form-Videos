@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "storyboard_system.txt").read_text()
 
-DEFAULT_BATCH_SIZE = 10
+DEFAULT_BATCH_SIZE = 12
 
 
 def _extract_json(text: str) -> dict:

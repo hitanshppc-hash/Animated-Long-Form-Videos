@@ -46,7 +46,7 @@ def upload(path, title, description, tags, privacy="public", hook=None, comment=
 
     desc = (description or "").strip()
     if not desc:
-        desc = f"{title}\n\n#shorts #{' #'.join((tags or [])[:5])}"
+        desc = f"{title}\n\n#{' #'.join((tags or [])[:5])}" if tags else title
 
     body = {
         "snippet": {

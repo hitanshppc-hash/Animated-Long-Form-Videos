@@ -74,6 +74,11 @@ def fetch_stock_video(query: str, output_path: str, max_duration: float = 12.0) 
             codec="libx264",
             audio_codec="aac",
             fps=TARGET_FPS,
+            preset="veryfast",
+            # One thread per encode: parallel_workers in pipeline.py already
+            # runs several of these concurrently, so per-encode threading
+            # would just oversubscribe the runner's CPU.
+            threads=1,
             logger=None,
         )
 

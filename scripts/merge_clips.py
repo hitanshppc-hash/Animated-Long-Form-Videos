@@ -49,7 +49,7 @@ def _try_concat_reencode(clip_paths: List[str], output_path: str) -> bool:
         try:
             _run_ff(
                 ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                 "-i", list_path, "-c:v", "libx264", "-an", output_path],
+                 "-i", list_path, "-c:v", "libx264", "-preset", "veryfast", "-an", output_path],
                 "concat re-encode",
             )
             logger.info(f"Re-encoded merge of {len(clip_paths)} clips -> {output_path}")
@@ -67,7 +67,7 @@ def _try_moviepy_concat(clip_paths: List[str], output_path: str) -> bool:
         clips = [VideoFileClip(p) for p in clip_paths]
         try:
             final = concatenate_videoclips(clips, method="compose")
-            final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+            final.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="veryfast", logger=None)
             final.close()
         finally:
             for c in clips:
@@ -116,7 +116,10 @@ def _xfade_batch(clip_paths: List[str], output_path: str, crossfade: float) -> N
         ["ffmpeg", "-y"] + input_args +
         ["-filter_complex", filter_complex,
          "-map", "[vout]", "-an",
-         "-c:v", "libx264", output_path],
+         # YouTube re-transcodes on ingest, so trading a slower/denser
+         # encode for a faster one here costs nothing perceptible while
+         # cutting real time off the merge step.
+         "-c:v", "libx264", "-preset", "veryfast", output_path],
         "xfade",
     )
     total = sum(durations) - crossfade * (n - 1)

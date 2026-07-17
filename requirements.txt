@@ -7,10 +7,16 @@ google-auth-oauthlib>=1.2.0
 
 gTTS>=2.5.0
 edge-tts>=7.0.0
-kokoro>=0.3.1
 numpy>=1.24.0
 soundfile>=0.12.0
 huggingface_hub>=0.23.0
+
+# kokoro (neural local TTS fallback, used only if ElevenLabs/edge-tts/gTTS
+# all fail) is intentionally NOT installed here — it transitively pulls in
+# torch, the full CUDA/nvidia-* stack, transformers, and spacy (~1-2+ min of
+# extra `pip install` time on every run). generate_narration.py's Kokoro step
+# lazy-imports it and degrades to the next fallback if it's missing.
+# Install locally with: pip install kokoro
 
 # Local LLM (llama.cpp) — only needed for offline storyboard generation.
 # Install with: pip install llama-cpp-python

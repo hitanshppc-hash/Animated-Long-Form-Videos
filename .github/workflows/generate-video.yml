@@ -73,6 +73,19 @@ jobs:
             output
           key: pipeline-work-${{ github.run_id }}
 
+      # history.json (past titles, used so the storyboard LLM never repeats a
+      # premise) needs to grow across every run, not just retries of one run
+      # — actions/cache entries are immutable per-key, so this uses a
+      # per-run key with a prefix restore-key to always pull the most recent
+      # prior run's history and always save a new entry.
+      - name: Cache title history across runs
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: history-json-${{ github.run_id }}
+          restore-keys: |
+            history-json-
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
