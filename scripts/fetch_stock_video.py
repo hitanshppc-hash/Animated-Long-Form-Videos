@@ -10,8 +10,18 @@ logger = get_logger(__name__)
 
 PEXELS_VIDEO_SEARCH_URL = "https://api.pexels.com/videos/search"
 
+# Canonical output resolution/fps for every clip. Pexels returns landscape
+# results at all kinds of widths/heights/framerates depending on the source
+# video, and merging clips of mismatched resolution is what was causing the
+# xfade crossfade filter to fail on every run (falling back to hard cuts) and
+# made caption sizing/position unreliable. Normalizing every clip to the same
+# 1080p 16:9 frame here fixes both, and matches standard YouTube upload specs.
+TARGET_WIDTH = 1920
+TARGET_HEIGHT = 1080
+TARGET_FPS = 24
 
-def _pick_file(video: dict, target_width: int = 1280) -> dict:
+
+def _pick_file(video: dict, target_width: int = TARGET_WIDTH) -> dict:
     files = video.get("video_files", [])
     mp4_files = [f for f in files if f.get("file_type") == "video/mp4" and f.get("width")]
     if not mp4_files:
@@ -48,7 +58,24 @@ def fetch_stock_video(query: str, output_path: str, max_duration: float = 12.0) 
 
     with VideoFileClip(raw_path) as clip:
         trimmed = clip.subclipped(0, min(max_duration, clip.duration))
-        trimmed.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
+
+        # Scale to cover the canonical frame, then center-crop, so every clip
+        # ends up at the exact same WxH regardless of the source aspect ratio.
+        scale = max(TARGET_WIDTH / trimmed.w, TARGET_HEIGHT / trimmed.h)
+        resized = trimmed.resized(scale)
+        normalized = resized.cropped(
+            width=TARGET_WIDTH,
+            height=TARGET_HEIGHT,
+            x_center=resized.w / 2,
+            y_center=resized.h / 2,
+        )
+        normalized.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            fps=TARGET_FPS,
+            logger=None,
+        )
 
     Path(raw_path).unlink(missing_ok=True)
     logger.info(f"Wrote stock video fallback ({query!r}) to {output_path}")

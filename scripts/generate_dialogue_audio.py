@@ -21,8 +21,15 @@ def assign_voices(character_names: list) -> dict:
     return {name: VOICE_POOL[i % len(VOICE_POOL)] for i, name in enumerate(sorted(set(character_names)))}
 
 
-def generate_dialogue_track(scenes: list, work_dir: str, output_path: str, max_workers: int = 4) -> list:
-    from moviepy import AudioClip, AudioFileClip, concatenate_audioclips
+def generate_dialogue_track(
+    scenes: list,
+    work_dir: str,
+    output_path: str,
+    scene_offsets: list = None,
+    scene_durations: list = None,
+    max_workers: int = 4,
+) -> list:
+    from moviepy import AudioFileClip, CompositeAudioClip
 
     lines = [
         (i, j, scene.get("dialogue", [])[j])
@@ -53,26 +60,50 @@ def generate_dialogue_track(scenes: list, work_dir: str, output_path: str, max_w
     # Preserve scene/line order even though rendering ran concurrently.
     rendered.sort(key=lambda r: (r["scene"], r["line"]))
 
-    silence = AudioClip(lambda t: 0, duration=0.4, fps=44100)
+    # Place each scene's dialogue at that scene's actual position in the merged
+    # video timeline (scene_offsets/scene_durations), instead of packing every
+    # line back-to-back regardless of scene length. Without this, total
+    # narration length (sum of TTS line durations) ends up far shorter than
+    # total video length (scenes * clip_duration), so the audio finishes long
+    # before the video does.
+    LEAD_IN = 0.3
+    GAP = 0.3
+    scene_cursor = {}
+    fallback_t = 0.0
+
     clips = []
     cues = []
-    t = 0.0
     for r in rendered:
         clip = AudioFileClip(r["path"])
-        cues.append({"start": t, "end": t + clip.duration, "character": r["character"], "text": r["text"]})
-        clips.append(clip)
-        clips.append(silence)
-        t += clip.duration + silence.duration
+        scene_i = r["scene"]
 
-    final = concatenate_audioclips(clips)
+        if scene_offsets is not None:
+            scene_start = scene_offsets[scene_i]
+            start_t = scene_cursor.get(scene_i, scene_start + LEAD_IN)
+            if scene_durations is not None:
+                scene_end = scene_start + scene_durations[scene_i]
+                start_t = min(start_t, max(scene_start, scene_end - clip.duration))
+        else:
+            start_t = fallback_t
+
+        end_t = start_t + clip.duration
+        cues.append({"start": start_t, "end": end_t, "character": r["character"], "text": r["text"]})
+        clips.append(clip.with_start(start_t))
+
+        if scene_offsets is not None:
+            scene_cursor[scene_i] = end_t + GAP
+        else:
+            fallback_t = end_t + 0.4
+
+    final = CompositeAudioClip(clips)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     final.write_audiofile(output_path, logger=None)
+    total = final.duration
     final.close()
     for c in clips:
-        if c is not silence:
-            c.close()
+        c.close()
 
-    logger.info(f"Wrote dialogue track ({len(cues)} lines, {t:.1f}s) to {output_path}")
+    logger.info(f"Wrote dialogue track ({len(cues)} lines, {total:.1f}s) to {output_path}")
     return cues
 
 
@@ -112,11 +143,17 @@ def write_ass(cues: list, ass_path: str) -> str:
         "[Script Info]",
         "Title: Long-Form Video Captions",
         "ScriptType: v4.00+",
+        # Must match the canonical output resolution (fetch_stock_video.TARGET_WIDTH/HEIGHT).
+        # Without an explicit PlayRes, libass falls back to guessing based on
+        # whatever resolution the current frame happens to report, which made
+        # captions render at wildly inconsistent sizes/positions.
+        "PlayResX: 1920",
+        "PlayResY: 1080",
         "WrapStyle: 0",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        'Style: W,DejaVu Sans,58,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,20,20,50,1',
+        'Style: W,DejaVu Sans,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,2,2,80,80,60,1',
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

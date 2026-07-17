@@ -11,7 +11,7 @@ from generate_storyboard import generate_storyboard
 from generate_dialogue_audio import generate_dialogue_track, write_srt, write_ass
 from extract_last_frame import extract_last_frame
 from fetch_seed_image import fetch_seed_image
-from merge_clips import merge_clips, attach_narration, burn_subtitles
+from merge_clips import merge_clips, attach_narration, burn_subtitles, probe_duration
 from history import load_titles, append_title
 from utils import get_logger, video_duration
 
@@ -150,7 +150,23 @@ def run_pipeline(
     merge_clips(clip_paths, merged_path, crossfade)
 
     if narrate:
-        cues = generate_dialogue_track(scenes, work_dir, str(work / "narration.mp3"))
+        # Real per-clip durations (source stock footage may be shorter than the
+        # requested clip_duration) so narration lines land on each scene's
+        # actual position in the merged timeline, not an idealized one.
+        clip_durations = [probe_duration(p) for p in clip_paths]
+        scene_offsets = []
+        running = 0.0
+        for i, d in enumerate(clip_durations):
+            scene_offsets.append(running)
+            running += d - (crossfade if i > 0 else 0)
+
+        cues = generate_dialogue_track(
+            scenes,
+            work_dir,
+            str(work / "narration.mp3"),
+            scene_offsets=scene_offsets,
+            scene_durations=clip_durations,
+        )
         if cues:
             attach_narration(merged_path, str(work / "narration.mp3"), output_path)
             srt_path = str(Path(output_path).with_suffix(".srt"))

@@ -11,7 +11,7 @@ from utils import get_logger
 logger = get_logger(__name__)
 
 
-def _probe_duration(path: str) -> float:
+def probe_duration(path: str) -> float:
     import json as _json
     probe = shutil.which("ffprobe") or shutil.which("ffmpeg")
     if not probe:
@@ -114,7 +114,7 @@ _BATCH_SIZE = 10
 
 
 def _xfade_batch(clip_paths: List[str], output_path: str, crossfade: float) -> None:
-    durations = [_probe_duration(p) for p in clip_paths]
+    durations = [probe_duration(p) for p in clip_paths]
     n = len(clip_paths)
 
     input_args = []
@@ -207,7 +207,7 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    duration = _probe_duration(video_path)
+    duration = probe_duration(video_path)
     try:
         _run_ff(
             ["ffmpeg", "-y", "-i", video_path, "-i", audio_path,
@@ -223,12 +223,17 @@ def attach_narration(video_path: str, audio_path: str, output_path: str) -> None
         logger.warning(f"ffmpeg narration attach failed ({e}), trying moviepy")
 
     try:
-        from moviepy import AudioFileClip, VideoFileClip
+        from moviepy import AudioClip, AudioFileClip, CompositeAudioClip, VideoFileClip
         video = VideoFileClip(video_path)
         audio = AudioFileClip(audio_path)
         try:
             if audio.duration > video.duration:
                 audio = audio.subclipped(0, video.duration)
+            elif audio.duration < video.duration:
+                # Pad with trailing silence so narration/video end together
+                # instead of leaving the rest of the video silent.
+                silence = AudioClip(lambda t: 0, duration=video.duration - audio.duration, fps=audio.fps)
+                audio = CompositeAudioClip([audio, silence.with_start(audio.duration)])
             final = video.with_audio(audio)
             final.write_videofile(output_path, codec="libx264", audio_codec="aac", logger=None)
             final.close()

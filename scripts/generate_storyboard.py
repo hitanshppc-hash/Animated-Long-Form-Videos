@@ -36,14 +36,19 @@ def _extract_json(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    raw = re.sub(r'(?<=\w)"(?=\w)', r'\"', raw)
+    # The model frequently types a straight double quote instead of an apostrophe
+    # for contractions/possessives (e.g. `Kael"s`, `it"s expression`), which
+    # prematurely terminates the enclosing JSON string. Turn those back into
+    # apostrophes rather than escaping them, since that's what was actually meant.
+    raw = re.sub(r'(?<=[A-Za-z])"(?=(s|t|re|ve|ll|d|m|am)\b)', "'", raw)
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
 
-    raw = re.sub(r"(?<!\\)'", '"', raw)
+    # Any other stray mid-word quote: escape it in place instead of guessing.
+    raw = re.sub(r'(?<=\w)"(?=\w)', r'\"', raw)
 
     try:
         return json.loads(raw)

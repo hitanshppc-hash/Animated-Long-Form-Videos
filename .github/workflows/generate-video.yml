@@ -74,6 +74,10 @@ jobs:
       - name: Set video parameters
         id: params
         run: |
+          # github.event.inputs.* are only populated for workflow_dispatch runs;
+          # on `schedule` runs they are empty strings, which previously got passed
+          # straight through to pipeline.py (e.g. --crossfade "") and crashed argparse.
+          # Fall back to the same defaults declared in `on.workflow_dispatch.inputs` below.
           if [ "${{ github.event_name }}" = "schedule" ]; then
             IDX=$(( ${{ github.run_number }} % 4 ))
             case $IDX in
@@ -82,12 +86,36 @@ jobs:
               2) SCENES=75; DURATION=12 ;;   # 15 min
               3) SCENES=100; DURATION=12 ;;  # 20 min
             esac
+            IDEA=""
+            STORYBOARD_PATH="storyboard.json"
+            INIT_IMAGE_PATH=""
+            NARRATE="true"
+            CROSSFADE="0.5"
+            TITLE=""
+            DESCRIPTION=""
+            PRIVACY="public"
           else
             SCENES="${{ inputs.scenes }}"
             DURATION="${{ inputs.clip_duration }}"
+            IDEA="${{ inputs.idea }}"
+            STORYBOARD_PATH="${{ inputs.storyboard_path }}"
+            INIT_IMAGE_PATH="${{ inputs.init_image_path }}"
+            NARRATE="${{ inputs.narrate }}"
+            CROSSFADE="${{ inputs.crossfade }}"
+            TITLE="${{ inputs.title }}"
+            DESCRIPTION="${{ inputs.description }}"
+            PRIVACY="${{ inputs.privacy }}"
           fi
           echo "SCENES=$SCENES" >> $GITHUB_ENV
           echo "CLIP_DURATION=$DURATION" >> $GITHUB_ENV
+          echo "IDEA=$IDEA" >> $GITHUB_ENV
+          echo "STORYBOARD_PATH=$STORYBOARD_PATH" >> $GITHUB_ENV
+          echo "INIT_IMAGE_PATH=$INIT_IMAGE_PATH" >> $GITHUB_ENV
+          echo "NARRATE=$NARRATE" >> $GITHUB_ENV
+          echo "CROSSFADE=$CROSSFADE" >> $GITHUB_ENV
+          echo "YT_VIDEO_TITLE=$TITLE" >> $GITHUB_ENV
+          echo "YT_VIDEO_DESC=$DESCRIPTION" >> $GITHUB_ENV
+          echo "YT_PRIVACY=$PRIVACY" >> $GITHUB_ENV
           echo "Selected: $SCENES scenes x ${DURATION}s = $(( SCENES * DURATION / 60 )) min video"
 
       - name: Run pipeline
@@ -99,22 +127,22 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           IMG_FLAG=""
-          if [ -n "${{ inputs.init_image_path }}" ]; then
-            IMG_FLAG="--init-image ${{ inputs.init_image_path }}"
+          if [ -n "$INIT_IMAGE_PATH" ]; then
+            IMG_FLAG="--init-image $INIT_IMAGE_PATH"
           fi
 
           NARRATE_FLAG=""
-          if [ "${{ inputs.narrate }}" = "true" ]; then
+          if [ "$NARRATE" = "true" ]; then
             NARRATE_FLAG="--narrate"
           fi
 
           echo "Running pipeline with $SCENES scenes, ${CLIP_DURATION}s each"
 
           python scripts/pipeline.py \
-            --storyboard "${{ inputs.storyboard_path }}" \
-            --idea "${{ inputs.idea }}" \
+            --storyboard "$STORYBOARD_PATH" \
+            --idea "$IDEA" \
             --scenes "$SCENES" \
-            --crossfade "${{ inputs.crossfade }}" \
+            --crossfade "$CROSSFADE" \
             --clip-duration "$CLIP_DURATION" \
             $IMG_FLAG \
             $NARRATE_FLAG \
@@ -138,9 +166,9 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          YT_VIDEO_TITLE: ${{ inputs.title }}
-          YT_VIDEO_DESC: ${{ inputs.description }}
-          YT_PRIVACY: ${{ inputs.privacy }}
+          # YT_VIDEO_TITLE / YT_VIDEO_DESC / YT_PRIVACY come from the job-level
+          # GITHUB_ENV set in "Set video parameters", which already resolves
+          # schedule-run defaults (raw inputs.* are empty on schedule triggers).
         run: |
           if [ -z "$YT_REFRESH_TOKEN" ]; then
             echo "YouTube secrets not configured - skipping upload"
