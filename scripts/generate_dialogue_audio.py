@@ -19,8 +19,11 @@ VOICE_POOL = [
 ]
 
 # Kept separate from VOICE_POOL so the narrator never happens to sound like
-# one of the story's own characters.
-NARRATOR_VOICE = "en-US-DavisNeural"  # deep, warm, storyteller cadence
+# one of the story's own characters. Verified against `edge-tts --list-voices`
+# (en-US-DavisNeural, used here previously, doesn't actually exist in
+# edge-tts's voice list and silently failed every narrator line, falling
+# back to gTTS for all of them).
+NARRATOR_VOICE = "en-US-ChristopherNeural"  # "Reliable, Authority" — real edge-tts voice
 
 
 def assign_voices(character_names: list) -> dict:

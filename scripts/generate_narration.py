@@ -86,7 +86,7 @@ _KOKORO_VOICE_MAP = {
     "en-US-GuyNeural": "am_adam", "en-GB-SoniaNeural": "af_sarah",
     "en-GB-RyanNeural": "am_michael", "en-US-AnaNeural": "af_nova",
     "en-US-MichelleNeural": "af_sky", "en-US-SteffanNeural": "am_liam",
-    "en-US-DavisNeural": "am_fenrir",
+    "en-US-ChristopherNeural": "am_michael",
 }
 
 
@@ -134,8 +134,23 @@ async def _edge_async(text, voice, out_path):
     return words
 
 
+# A voice id that turns out to be wrong/deprecated/unavailable (like the
+# previous NARRATOR_VOICE typo) shouldn't drop straight to gTTS and lose
+# neural quality + word-timing data for every line using it — retry once
+# against a known-good voice before giving up on edge-tts entirely.
+_EDGE_TTS_SAFE_DEFAULT = "en-US-AriaNeural"
+
+
 def _edge_tts(text, voice, output_path):
-    words = asyncio.run(_edge_async(text, voice, output_path))
+    try:
+        words = asyncio.run(_edge_async(text, voice, output_path))
+    except Exception as exc:
+        if voice == _EDGE_TTS_SAFE_DEFAULT:
+            raise
+        logger.warning(
+            f"edge-tts voice {voice!r} failed ({exc}); retrying with {_EDGE_TTS_SAFE_DEFAULT!r}"
+        )
+        words = asyncio.run(_edge_async(text, _EDGE_TTS_SAFE_DEFAULT, output_path))
     logger.info(f"Wrote narration audio (edge-tts): {output_path}")
     return output_path, words
 
