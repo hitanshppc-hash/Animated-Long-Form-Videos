@@ -115,6 +115,7 @@ def _generate_batch(
         scene.setdefault("dialogue", [])
         scene.setdefault("tone", "expository")
         scene.setdefault("stock_query", "")
+        scene.setdefault("narration", "")
 
     return data
 

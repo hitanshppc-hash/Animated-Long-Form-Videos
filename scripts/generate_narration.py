@@ -86,6 +86,7 @@ _KOKORO_VOICE_MAP = {
     "en-US-GuyNeural": "am_adam", "en-GB-SoniaNeural": "af_sarah",
     "en-GB-RyanNeural": "am_michael", "en-US-AnaNeural": "af_nova",
     "en-US-MichelleNeural": "af_sky", "en-US-SteffanNeural": "am_liam",
+    "en-US-DavisNeural": "am_fenrir",
 }
 
 

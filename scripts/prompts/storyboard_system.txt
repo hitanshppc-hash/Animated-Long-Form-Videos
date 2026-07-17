@@ -27,6 +27,7 @@ markdown, no commentary) matching this exact schema:
 {"title": "...", "world_description": "...",
  "characters": [{"name": "...", "description": "...", "personality": "..."}],
  "scenes": [{"prompt": "...", "action": "...", "tone": "...", "stock_query": "...",
+              "narration": "...",
               "dialogue": [{"character": "...", "line": "..."}]}],
  "summary": "..."}
 
@@ -66,6 +67,18 @@ expository, dialogue, tension, action, wonder, mystery, sadness, joy;
 speaking character's name (matching the roster) and their line written in a
 voice true to that character's personality — real dialogue with subtext and
 character voice, not narration-flat exposition.
+
+'narration' — a SHORT (one sentence, 8-18 words) third-person narrator
+voice-over line for this exact scene, in a storytelling voice matching
+world_description's tone (e.g. warm, ominous, wry — whatever fits). The
+video is voiced continuously: scenes with dialogue are heard through their
+characters' lines, and every scene WITHOUT dialogue is heard through this
+narration line instead, so silence never falls for more than a beat. Always
+write a good one even for scenes that also have dialogue (it won't be used
+then, but never leave it empty). Describe what's happening/what it means
+right now, in this scene — advance the story, don't just describe the
+image ("She hesitates at the threshold, memory pulling her back" not "A
+woman stands in a doorway").
 
 'stock_query' — a short (3-6 word) REAL-WORLD stock-footage search phrase for
 this shot. The actual visuals are sourced from a real-world stock video

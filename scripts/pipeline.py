@@ -64,11 +64,16 @@ def run_pipeline(
     world_ctx = storyboard.get("world_description", "")
 
     dialogue_line_count = sum(len(s.get("dialogue", [])) for s in scenes)
+    narrator_line_count = sum(
+        1 for s in scenes if not s.get("dialogue") and (s.get("narration") or "").strip()
+    )
+    audio_line_count = dialogue_line_count + narrator_line_count
     logger.info(
         f"Plan: {len(scenes)} scenes, {len(storyboard.get('characters', []))} characters, "
-        f"{dialogue_line_count} dialogue lines, narration={'on' if narrate else 'off'}, "
+        f"{dialogue_line_count} dialogue lines + {narrator_line_count} narrator lines, "
+        f"narration={'on' if narrate else 'off'}, "
         f"crossfade={crossfade}s -- estimated API calls: {len(scenes)} video"
-        + (f" + {dialogue_line_count} narration lines" if narrate else "")
+        + (f" + {audio_line_count} narration lines" if narrate else "")
     )
 
     if not init_image:

@@ -11,12 +11,16 @@ logger = get_logger(__name__)
 # same across a run. Names must be real edge-tts voice ids (also used
 # directly by generate_narration._KOKORO_VOICE_MAP if Kokoro is installed).
 VOICE_POOL = [
-    "en-US-AriaNeural",   # warm, versatile female (default/narrator)
+    "en-US-AriaNeural",   # warm, versatile female
     "en-US-GuyNeural",    # confident, energetic male
     "en-GB-RyanNeural",   # laid-back, resonant British male
     "en-US-JennyNeural",  # natural, expressive female
     "en-US-AnaNeural",    # bright, youthful female
 ]
+
+# Kept separate from VOICE_POOL so the narrator never happens to sound like
+# one of the story's own characters.
+NARRATOR_VOICE = "en-US-DavisNeural"  # deep, warm, storyteller cadence
 
 
 def assign_voices(character_names: list) -> dict:
@@ -29,20 +33,32 @@ def generate_dialogue_track(
     output_path: str,
     scene_offsets: list = None,
     scene_durations: list = None,
-    max_workers: int = 4,
+    # edge-tts/gTTS are network-bound, not CPU-bound like the video encode
+    # workers, and every scene now gets a line (dialogue or narration)
+    # instead of just the sparse few with dialogue, so more concurrency here
+    # is safe and meaningfully cuts narration generation time.
+    max_workers: int = 8,
 ) -> list:
     from moviepy import AudioFileClip, CompositeAudioClip
 
-    lines = [
-        (i, j, scene.get("dialogue", [])[j])
-        for i, scene in enumerate(scenes)
-        for j in range(len(scene.get("dialogue", [])))
-        if scene.get("dialogue", [])[j].get("line")
-    ]
+    # Every scene gets voiced: its own dialogue if it has any, otherwise the
+    # narrator line written for it — so the video is never silent for more
+    # than a beat between lines, instead of only the handful of scenes that
+    # happen to contain character dialogue.
+    lines = []
+    for i, scene in enumerate(scenes):
+        dialogue = scene.get("dialogue", [])
+        scene_lines = [(i, j, entry) for j, entry in enumerate(dialogue) if entry.get("line")]
+        if scene_lines:
+            lines.extend(scene_lines)
+        else:
+            narration_text = (scene.get("narration") or "").strip()
+            if narration_text:
+                lines.append((i, 0, {"character": "Narrator", "line": narration_text}))
     if not lines:
         return []
 
-    voice_map = assign_voices([entry["character"] for _, _, entry in lines if entry.get("character")])
+    voice_map = assign_voices([entry["character"] for _, _, entry in lines if entry.get("character") and entry["character"] != "Narrator"])
     work = Path(work_dir) / "dialogue"
     work.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +67,7 @@ def generate_dialogue_track(
         text = entry["line"]
         character = entry.get("character", "Narrator")
         seg_path = work / f"line_{i:03d}_{j:02d}.mp3"
-        voice_id = voice_map.get(character, VOICE_POOL[0])
+        voice_id = NARRATOR_VOICE if character == "Narrator" else voice_map.get(character, VOICE_POOL[0])
         generate_narration(text, str(seg_path), voice_id=voice_id)
         return {"scene": i, "line": j, "character": character, "text": text, "path": str(seg_path)}
 
