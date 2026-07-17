@@ -59,6 +59,20 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Only restores within the SAME run (key includes run_id, no
+      # restore-keys fallback) so a "re-run failed jobs" retry after e.g. the
+      # YouTube upload step fails can skip already-generated clips and an
+      # already-merged video instead of redoing that work from scratch. A
+      # fresh trigger always gets a new run_id, so different videos never
+      # share cached state.
+      - name: Cache work/output across re-runs
+        uses: actions/cache@v4
+        with:
+          path: |
+            work
+            output
+          key: pipeline-work-${{ github.run_id }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

@@ -6,32 +6,9 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from utils import get_logger
+from utils import get_logger, video_duration as probe_duration
 
 logger = get_logger(__name__)
-
-
-def probe_duration(path: str) -> float:
-    import json as _json
-    probe = shutil.which("ffprobe") or shutil.which("ffmpeg")
-    if not probe:
-        from moviepy import VideoFileClip
-        with VideoFileClip(path) as clip:
-            return clip.duration
-    if "ffprobe" in probe:
-        raw = subprocess.check_output(
-            [probe, "-v", "error", "-show_entries", "format=duration",
-             "-of", "json", path]
-        )
-        return float(_json.loads(raw)["format"]["duration"])
-    result = subprocess.run([probe, "-i", path, "-f", "null", "-"],
-                            capture_output=True, text=True)
-    for line in result.stderr.split("\n"):
-        if "Duration" in line:
-            dur = line.split("Duration: ")[1].split(",")[0].strip()
-            h, m, s = dur.split(":")
-            return float(h) * 3600 + float(m) * 60 + float(s)
-    raise RuntimeError(f"Could not probe duration for {path}")
 
 
 def _run_ff(cmd: list, desc: str = "ffmpeg") -> None:
@@ -111,6 +88,12 @@ def _merge_concat(clip_paths: List[str], output_path: str) -> None:
 
 # ------------------------------------------------------------- xfade (batched)
 _BATCH_SIZE = 10
+# A single ffmpeg xfade filter_complex with too many simultaneous -i inputs
+# risks resource exhaustion (open fds, filter graph size). Verified working
+# directly at 40 clips; the cron rotation also runs 75/100-scene videos, so
+# route those straight to the batched path instead of gambling on a direct
+# attempt first.
+_MAX_DIRECT_XFADE_CLIPS = 50
 
 
 def _xfade_batch(clip_paths: List[str], output_path: str, crossfade: float) -> None:
@@ -190,8 +173,14 @@ def merge_clips(clip_paths: List[str], output_path: str, crossfade_duration: flo
     crossfade = min(crossfade_duration, 2.0)
 
     if crossfade > 0 and len(clip_paths) > 1:
-        if _try_xfade_sequential(clip_paths, output_path, crossfade):
-            return
+        if len(clip_paths) <= _MAX_DIRECT_XFADE_CLIPS:
+            if _try_xfade_sequential(clip_paths, output_path, crossfade):
+                return
+        else:
+            logger.info(
+                f"{len(clip_paths)} clips exceeds direct-xfade threshold "
+                f"({_MAX_DIRECT_XFADE_CLIPS}); going straight to batched xfade"
+            )
         if _try_xfade_batched(clip_paths, output_path, crossfade):
             return
         logger.warning("All xfade methods failed, falling back to hard cuts")

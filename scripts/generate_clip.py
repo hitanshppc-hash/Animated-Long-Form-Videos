@@ -14,6 +14,7 @@ def generate_clip(
     output_path: str,
     dry_run: bool = False,
     clip_duration: float = 12.0,
+    stock_query: str = "",
 ) -> None:
     if not Path(image_path).exists():
         raise FileNotFoundError(f"Seed image not found: {image_path}")
@@ -30,9 +31,13 @@ def generate_clip(
 
     from fetch_stock_video import fetch_stock_video
 
-    short_query = extract_keywords(prompt, max_words=5)
-    logger.info(f"Fetching stock video for: {short_query!r} (from {len(prompt)} chars)")
-    fetch_stock_video(short_query, output_path, max_duration=clip_duration)
+    # Prefer the LLM-authored stock_query (written for real-world stock
+    # footage) over stripping keywords out of `prompt`, which is written as
+    # an image/video-generation prompt (invented characters, fantastical
+    # imagery) that a stock video library can't actually match.
+    query = stock_query.strip() if stock_query and stock_query.strip() else extract_keywords(prompt, max_words=5)
+    logger.info(f"Fetching stock video for: {query!r}")
+    fetch_stock_video(query, output_path, max_duration=clip_duration)
 
 
 def main() -> None:
@@ -41,6 +46,7 @@ def main() -> None:
     parser.add_argument("--prompt", required=True, help="Text prompt describing the motion/scene")
     parser.add_argument("--output", required=True, help="Path to write the output .mp4")
     parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip")
+    parser.add_argument("--stock-query", default="", help="Stock-footage search query (falls back to keywords extracted from --prompt)")
     parser.add_argument("--dry-run", action="store_true", help="Validate inputs without calling the API")
     args = parser.parse_args()
 
@@ -50,6 +56,7 @@ def main() -> None:
         args.output,
         dry_run=args.dry_run,
         clip_duration=args.clip_duration,
+        stock_query=args.stock_query,
     )
 
 

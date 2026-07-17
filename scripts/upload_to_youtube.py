@@ -30,6 +30,7 @@ def main():
         description=desc,
         tags=tags,
         privacy=privacy,
+        srt_path="output/final_video.srt",
     )
     print(f"Uploaded: {url}")
 

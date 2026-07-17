@@ -8,12 +8,12 @@ from pathlib import Path
 
 from generate_clip import generate_clip
 from generate_storyboard import generate_storyboard
-from generate_dialogue_audio import generate_dialogue_track, write_srt, write_ass
+from generate_dialogue_audio import generate_dialogue_track, write_srt
 from extract_last_frame import extract_last_frame
 from fetch_seed_image import fetch_seed_image
-from merge_clips import merge_clips, attach_narration, burn_subtitles, probe_duration
+from merge_clips import merge_clips, attach_narration, probe_duration
 from history import load_titles, append_title
-from utils import get_logger, video_duration
+from utils import get_logger, video_duration, make_thumbnail
 
 logger = get_logger(__name__)
 
@@ -47,7 +47,7 @@ def run_pipeline(
     resume: bool = True,
     history_path: str = "history.json",
     clip_duration: float = 12.0,
-    parallel_workers: int = 3,
+    parallel_workers: int = 4,
 ) -> None:
     start_time = time.monotonic()
     work = Path(work_dir)
@@ -106,6 +106,7 @@ def run_pipeline(
                 scene["prompt"],
                 clip_path,
                 clip_duration=clip_duration,
+                stock_query=scene.get("stock_query", ""),
             )
             extract_last_frame(clip_path, frame_path)
             return idx, clip_path
@@ -130,6 +131,7 @@ def run_pipeline(
                 scene["prompt"],
                 clip_path,
                 clip_duration=clip_duration,
+                stock_query=scene.get("stock_query", ""),
             )
             clip_paths[idx] = clip_path
 
@@ -143,6 +145,19 @@ def run_pipeline(
 
     if dry_run:
         logger.info(f"[dry-run] Would merge {len(clip_paths)} clips into {output_path}")
+        return
+
+    out = Path(output_path)
+    if (
+        resume
+        and out.exists()
+        and out.stat().st_size > 0
+        and all(out.stat().st_mtime >= Path(cp).stat().st_mtime for cp in clip_paths)
+    ):
+        logger.info(
+            f"{output_path} already exists and is up to date with all {len(clip_paths)} clips; "
+            "skipping merge/narration (use --no-resume to force a rebuild)"
+        )
         return
 
     logger.info(f"Merging {len(clip_paths)} clips into {output_path}")
@@ -169,20 +184,25 @@ def run_pipeline(
         )
         if cues:
             attach_narration(merged_path, str(work / "narration.mp3"), output_path)
+            # Captions are shipped as a real, viewer-toggleable YouTube caption
+            # track (see youtube_upload.py) instead of being burned into the
+            # frame — that used to mean a second full libx264 re-encode pass
+            # of the whole video just to draw text on top.
             srt_path = str(Path(output_path).with_suffix(".srt"))
             write_srt(cues, srt_path)
-            ass_path = str(Path(output_path).with_suffix(".ass"))
-            write_ass(cues, ass_path)
-            burn_subtitles(output_path, ass_path, output_path)
         else:
             logger.warning("No dialogue lines found in storyboard, skipping narration")
             shutil.copy(merged_path, output_path)
 
     thumbnail_path = Path(output_path).parent / "thumbnail.jpg"
     try:
-        shutil.copy(init_image, thumbnail_path)
+        make_thumbnail(init_image, storyboard.get("title", ""), str(thumbnail_path))
     except Exception as exc:
-        logger.warning(f"Could not write thumbnail: {exc}")
+        logger.warning(f"Could not build thumbnail, falling back to raw seed frame: {exc}")
+        try:
+            shutil.copy(init_image, thumbnail_path)
+        except Exception as exc2:
+            logger.warning(f"Could not write thumbnail: {exc2}")
 
     metadata = {
         "title": storyboard.get("title", ""),
@@ -225,7 +245,7 @@ def main() -> None:
 
     parser.add_argument("--crossfade", type=float, default=0.0, help="Crossfade duration in seconds between clips")
     parser.add_argument("--clip-duration", type=float, default=12.0, help="Seconds per clip (8-12 recommended)")
-    parser.add_argument("--parallel-workers", type=int, default=3, help="Number of parallel clip download workers")
+    parser.add_argument("--parallel-workers", type=int, default=4, help="Number of parallel clip download workers")
     parser.add_argument("--narrate", action="store_true", help="Generate dialogue narration and burn in captions (.srt)")
     parser.add_argument("--dry-run", action="store_true", help="Validate storyboard/inputs without calling any API")
     parser.add_argument("--no-resume", action="store_true", help="Ignore any existing manifest and regenerate all clips")

@@ -39,7 +39,7 @@ def _service(extra_scopes=None):
     return build("youtube", "v3", credentials=creds)
 
 
-def upload(path, title, description, tags, privacy="public", hook=None, comment=None):
+def upload(path, title, description, tags, privacy="public", hook=None, comment=None, srt_path=None):
     youtube = _service()
     if not youtube:
         raise RuntimeError("YouTube secrets not configured")
@@ -74,8 +74,44 @@ def upload(path, title, description, tags, privacy="public", hook=None, comment=
     video_id = response["id"]
 
     _pin_comment(video_id, text=comment or hook or "What did you think? Drop your thoughts below!")
+    if srt_path and os.path.exists(srt_path):
+        _upload_captions(video_id, srt_path)
 
     return f"https://youtu.be/{video_id}"
+
+
+def _upload_captions(video_id, srt_path, language="en", name="English"):
+    """Upload a real, viewer-toggleable caption track (separate service with
+    force-ssl, same reasoning as _pin_comment: captions.insert needs a wider
+    scope than plain youtube.upload, so degrade gracefully if unavailable).
+    """
+    try:
+        svc = _service(extra_scopes=[
+            "https://www.googleapis.com/auth/youtube.force-ssl"])
+        if not svc:
+            print("  captions: YouTube service not available")
+            return
+        media = MediaFileUpload(srt_path, mimetype="text/plain")
+        svc.captions().insert(
+            part="snippet",
+            body={
+                "snippet": {
+                    "videoId": video_id,
+                    "language": language,
+                    "name": name,
+                    "isDraft": False,
+                }
+            },
+            media_body=media,
+        ).execute()
+        print(f"  captions uploaded ({language}) for https://youtu.be/{video_id}", flush=True)
+    except Exception as e:
+        err = str(e)
+        if any(k in err.lower() for k in ("insufficient", "scope", "403", "invalid_scope")):
+            print("  captions: token lacks force-ssl scope — run "
+                  "scripts/get_youtube_token.py to re-auth with updated scopes")
+        else:
+            print(f"  captions upload failed: {err}", flush=True)
 
 
 def _pin_comment(video_id, text=None):

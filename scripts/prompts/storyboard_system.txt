@@ -26,7 +26,7 @@ markdown, no commentary) matching this exact schema:
 
 {"title": "...", "world_description": "...",
  "characters": [{"name": "...", "description": "...", "personality": "..."}],
- "scenes": [{"prompt": "...", "action": "...", "tone": "...",
+ "scenes": [{"prompt": "...", "action": "...", "tone": "...", "stock_query": "...",
               "dialogue": [{"character": "...", "line": "..."}]}],
  "summary": "..."}
 
@@ -66,6 +66,16 @@ expository, dialogue, tension, action, wonder, mystery, sadness, joy;
 speaking character's name (matching the roster) and their line written in a
 voice true to that character's personality — real dialogue with subtext and
 character voice, not narration-flat exposition.
+
+'stock_query' — a short (3-6 word) REAL-WORLD stock-footage search phrase for
+this shot. The actual visuals are sourced from a real-world stock video
+library, not generated from your 'prompt', so this must describe generic,
+literally filmable subject matter and camera framing (e.g. "person walking
+foggy forest path", "hands opening old wooden door", "city street rain
+night", "close-up face contemplative window light") — never invented
+character names, fictional places, or fantastical/impossible imagery, since
+a stock library has no footage of those. Favor the concrete physical
+action/setting/shot-type of the scene over its narrative meaning.
 
 'summary' is a 2-3 sentence recap of the story so far including the scenes
 you just wrote, so the next writer continues seamlessly and keeps the
