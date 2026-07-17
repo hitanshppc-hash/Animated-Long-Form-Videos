@@ -10,7 +10,7 @@ from utils import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_VOICE_ID = "af_heart"
+DEFAULT_VOICE_ID = "en-US-AriaNeural"
 
 TONE_VOICE_MAP = {
     "expository": "en-US-AriaNeural",
@@ -78,32 +78,6 @@ def _probe(path):
             h, m, s = dur.split(":")
             return float(h) * 3600 + float(m) * 60 + float(s)
     raise RuntimeError(f"Could not probe duration for {path}")
-
-
-# ------------------------------------------------------------------ ElevenLabs
-def _elevenlabs(text, voice_id, output_path):
-    import requests
-
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        raise RuntimeError("ELEVENLABS_API_KEY not set")
-
-    resp = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-        headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-        json={
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        },
-        timeout=60,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"ElevenLabs HTTP {resp.status_code}: {resp.text[:200]}")
-
-    Path(output_path).write_bytes(resp.content)
-    logger.info(f"Wrote narration audio (ElevenLabs): {output_path}")
-    return output_path, _estimate_timings(text, _probe(output_path))
 
 
 # ------------------------------------------------------------------- Kokoro
@@ -192,16 +166,15 @@ def _gtts(text, voice, output_path):
 def generate_narration(text: str, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str:
     """Generate narration audio. Returns path to audio file.
 
-    Fallback chain: ElevenLabs → Kokoro → edge-tts → gTTS → espeak-ng.
-    voice_id is expected to be an ElevenLabs voice id (see
-    generate_dialogue_audio.VOICE_POOL); the Kokoro/edge-tts fallbacks map it
-    through their own voice tables and fall back to a sensible default if it
-    isn't one of theirs.
+    Fallback chain: Kokoro → edge-tts → gTTS → espeak-ng. voice_id is an
+    edge-tts voice name (see generate_dialogue_audio.VOICE_POOL); Kokoro maps
+    it through _KOKORO_VOICE_MAP (falling back to a default if it isn't one
+    of Kokoro's own voices) and is only actually attempted if it's been
+    installed locally — see requirements.txt.
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     chain = [
-        ("elevenlabs", lambda: _elevenlabs(text, voice_id, output_path)),
         ("kokoro", lambda: _kokoro(text, voice_id, output_path)),
         ("edge-tts", lambda: _edge_tts(text, voice_id, output_path)),
         ("gtts", lambda: _gtts(text, voice_id, output_path)),
@@ -221,10 +194,10 @@ def generate_narration(text: str, output_path: str, voice_id: str = DEFAULT_VOIC
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate narration audio from text (ElevenLabs → Kokoro → edge-tts → gTTS → espeak-ng)")
+    parser = argparse.ArgumentParser(description="Generate narration audio from text (Kokoro → edge-tts → gTTS → espeak-ng)")
     parser.add_argument("--text", required=True, help="Narration text to speak")
     parser.add_argument("--output", required=True, help="Path to write the output audio file")
-    parser.add_argument("--voice-id", default=DEFAULT_VOICE_ID, help="ElevenLabs voice id")
+    parser.add_argument("--voice-id", default=DEFAULT_VOICE_ID, help="edge-tts voice name (e.g. en-US-AriaNeural)")
     args = parser.parse_args()
 
     generate_narration(args.text, args.output, args.voice_id)

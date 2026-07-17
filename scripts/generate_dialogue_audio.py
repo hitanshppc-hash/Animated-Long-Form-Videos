@@ -6,14 +6,16 @@ from utils import get_logger
 
 logger = get_logger(__name__)
 
-# A small pool of distinct ElevenLabs voices; characters are assigned one
-# deterministically so the same character always sounds the same across a run.
+# A small pool of distinct edge-tts (free, no API key) voices; characters are
+# assigned one deterministically so the same character always sounds the
+# same across a run. Names must be real edge-tts voice ids (also used
+# directly by generate_narration._KOKORO_VOICE_MAP if Kokoro is installed).
 VOICE_POOL = [
-    "JBFqnCBsd6RMkjVDRZzb",  # George - warm, captivating storyteller (default/narrator)
-    "EXAVITQu4vr4xnSDxMaL",  # Sarah - mature, reassuring, confident
-    "CwhRBWXzGAHq8TQ4Fs17",  # Roger - laid-back, casual, resonant
-    "IKne3meq5aSn9XLyUdCD",  # Charlie - deep, confident, energetic
-    "FGY2WhTYpPnrIDTdsKH5",  # Laura - enthusiastic, quirky attitude
+    "en-US-AriaNeural",   # warm, versatile female (default/narrator)
+    "en-US-GuyNeural",    # confident, energetic male
+    "en-GB-RyanNeural",   # laid-back, resonant British male
+    "en-US-JennyNeural",  # natural, expressive female
+    "en-US-AnaNeural",    # bright, youthful female
 ]
 
 

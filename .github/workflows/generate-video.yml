@@ -26,7 +26,7 @@ on:
         required: false
         default: ""
       narrate:
-        description: "Enable narration/dialogue audio (requires ElevenLabs key)"
+        description: "Enable narration/dialogue audio (edge-tts, free, no key needed)"
         type: boolean
         required: false
         default: true
@@ -151,7 +151,6 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           IMG_FLAG=""
           if [ -n "$INIT_IMAGE_PATH" ]; then
